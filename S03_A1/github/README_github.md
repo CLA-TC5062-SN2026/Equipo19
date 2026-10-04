@@ -20,7 +20,7 @@ Cada issue lleva tres etiquetas: `epica:E1` a `epica:E5`, `prioridad:alta|media|
    gh auth refresh -s project,read:project
    ```
 
-2. Correr el script con el repositorio del equipo (`Equipo19` en la organización del curso):
+2. Correr el script con el repositorio del equipo (`Equipo19` en la organización del curso; la especificación lo llama `TC5062-[Num_equipo]`):
 
    ```bash
    cd S03_A1/github
