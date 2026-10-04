@@ -1,0 +1,14 @@
+T-01	HT-01	T-01 · Estructura del repo, docker compose con PostgreSQL 16 y .env.example	tarea,sprint:1,rol:devops,horas:3	tareas/T-01.md
+T-02	HT-01	T-02 · Esqueleto FastAPI: configuración con pydantic-settings, GET /health y manejador de errores en español	tarea,sprint:1,rol:backend,horas:3	tareas/T-02.md
+T-03	HT-01	T-03 · SQLAlchemy 2.0 y Alembic: sesión por solicitud y migración inicial	tarea,sprint:1,rol:backend,horas:3	tareas/T-03.md
+T-04	HT-01	T-04 · Bitácora de solo append: tabla, función registrar_evento y usuario de base sin UPDATE ni DELETE sobre ella	tarea,sprint:1,rol:backend,horas:3	tareas/T-04.md
+T-05	HT-01	T-05 · pytest con httpx y base de prueba aislada por prueba	tarea,sprint:1,rol:qa,horas:2	tareas/T-05.md
+T-06	HT-01	T-06 · GitHub Actions: ruff y pytest con PostgreSQL de servicio en cada PR; rama main protegida	tarea,sprint:1,rol:devops,horas:3	tareas/T-06.md
+T-07	HU-01	T-07 · Modelos Usuario, Rol y Sesión con migración; comando de semilla del primer usuario de Coordinación AMPIP	tarea,sprint:1,rol:backend,horas:3	tareas/T-07.md
+T-08	HU-01	T-08 · POST /auth/login con argon2, mensaje de error genérico y registro en bitácora	tarea,sprint:1,rol:backend,horas:3	tareas/T-08.md
+T-09	HU-01	T-09 · Bloqueo de 15 minutos tras 5 intentos fallidos consecutivos	tarea,sprint:1,rol:backend,horas:2	tareas/T-09.md
+T-10	HU-01	T-10 · Sesiones guardadas en servidor con expiración por 60 minutos de inactividad y POST /auth/logout	tarea,sprint:1,rol:backend,horas:3	tareas/T-10.md
+T-11	HU-01	T-11 · Recuperación de contraseña: POST /auth/recuperacion y POST /auth/restablecimiento con token de un solo uso de 30 minutos; correo por consola en desarrollo	tarea,sprint:1,rol:backend,horas:3	tareas/T-11.md
+T-12	HU-01	T-12 · Dependencia requiere_rol reutilizable: 401 sin sesión, 403 sin el rol e intento denegado en bitácora	tarea,sprint:1,rol:backend,horas:2	tareas/T-12.md
+T-13	HU-01	T-13 · Pruebas automatizadas de RF-26-AC-1 a RF-26-AC-6 nombradas con su ID	tarea,sprint:1,rol:qa,horas:4	tareas/T-13.md
+T-14	HU-01	T-14 · Revisión de seguridad del flujo de autenticación	tarea,sprint:1,rol:seguridad,horas:2	tareas/T-14.md

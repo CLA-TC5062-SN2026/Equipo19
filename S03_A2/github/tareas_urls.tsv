@@ -1,0 +1,14 @@
+T-01	25	23	T-01 · Estructura del repo, docker compose con PostgreSQL 16 y .env.example
+T-02	26	23	T-02 · Esqueleto FastAPI: configuración con pydantic-settings, GET /health y manejador de errores en español
+T-03	27	23	T-03 · SQLAlchemy 2.0 y Alembic: sesión por solicitud y migración inicial
+T-04	28	23	T-04 · Bitácora de solo append: tabla, función registrar_evento y usuario de base sin UPDATE ni DELETE sobre ella
+T-05	29	23	T-05 · pytest con httpx y base de prueba aislada por prueba
+T-06	30	23	T-06 · GitHub Actions: ruff y pytest con PostgreSQL de servicio en cada PR; rama main protegida
+T-07	31	1	T-07 · Modelos Usuario, Rol y Sesión con migración; comando de semilla del primer usuario de Coordinación AMPIP
+T-08	32	1	T-08 · POST /auth/login con argon2, mensaje de error genérico y registro en bitácora
+T-09	33	1	T-09 · Bloqueo de 15 minutos tras 5 intentos fallidos consecutivos
+T-10	34	1	T-10 · Sesiones guardadas en servidor con expiración por 60 minutos de inactividad y POST /auth/logout
+T-11	35	1	T-11 · Recuperación de contraseña: POST /auth/recuperacion y POST /auth/restablecimiento con token de un solo uso de 30 minutos; correo por consola en desarrollo
+T-12	36	1	T-12 · Dependencia requiere_rol reutilizable: 401 sin sesión, 403 sin el rol e intento denegado en bitácora
+T-13	37	1	T-13 · Pruebas automatizadas de RF-26-AC-1 a RF-26-AC-6 nombradas con su ID
+T-14	38	1	T-14 · Revisión de seguridad del flujo de autenticación
