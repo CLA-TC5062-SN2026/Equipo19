@@ -59,10 +59,15 @@ def _ahora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# [S-01] Valores de ejemplo publicados en el repositorio (.env.example). Quien copie .env.example a .env sin
+# cambiarlo firmaría tokens con un secreto público; el v0 lo aceptaba porque mide más de 32 bytes.
+SECRETOS_DE_EJEMPLO = {"cambiar_por_un_secreto_aleatorio_de_al_menos_32_bytes"}
+
+
 def _secreto() -> str:
     s = get_settings().jwt_secret
     valor = s.get_secret_value() if s is not None else ""
-    if len(valor.encode("utf-8")) < MIN_BYTES_SECRETO:
+    if len(valor.encode("utf-8")) < MIN_BYTES_SECRETO or valor in SECRETOS_DE_EJEMPLO:
         raise _error_configuracion("JWT_SECRET")
     return valor
 

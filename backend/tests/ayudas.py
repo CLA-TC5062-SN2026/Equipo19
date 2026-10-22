@@ -1,6 +1,15 @@
 """Datos de prueba sintéticos (no se usa información real de AMPIP)."""
 
+import hashlib
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import bcrypt
+import psycopg
+
+CONTRASENA = "contrasena-de-prueba-123"
 
 CSV = (Path(__file__).resolve().parents[1] / "datos" / "catalogo_sintetico.csv").read_bytes()
 
@@ -48,3 +57,48 @@ def criterio_por_texto(c, parque_id, fragmento):
         if fragmento in item["texto"]:
             return item
     return None
+
+
+# ------------------------------------------------------------------ autenticación
+def _bd():
+    from tests.conftest import ADMIN_URL, PRUEBA
+
+    return psycopg.connect(ADMIN_URL.rsplit("/", 1)[0] + "/" + PRUEBA, autocommit=True)
+
+
+def sql(q, *args):
+    with _bd() as c:
+        cur = c.execute(q, args)
+        return cur.fetchall() if cur.description else None
+
+
+def crear_activo(correo, rol, parque_id=None, contrasena=CONTRASENA, desarrollador_id=None):
+    """Inserta un usuario activo con contraseña directo en la base (arranque de las pruebas)."""
+    h = bcrypt.hashpw(contrasena.encode(), bcrypt.gensalt(rounds=4)).decode()
+    uid = uuid.uuid4()
+    sql("INSERT INTO usuario (id, nombre, correo, contrasena_hash, rol, estado, parque_id, desarrollador_id) "
+        "VALUES (%s, %s, %s, %s, %s, 'activo', %s, %s)", uid, correo.split("@")[0], correo, h, rol, parque_id,
+        desarrollador_id)
+    return str(uid)
+
+
+def invitacion(usuario_id, vence_en=timedelta(hours=72)):
+    """Crea un enlace de invitación con token conocido (el real solo viaja por correo)."""
+    token = secrets.token_urlsafe(32)
+    sql("INSERT INTO enlace_un_solo_uso (usuario_id, token_hash, tipo, creado, expira_en) "
+        "VALUES (%s, %s, 'invitacion', %s, %s)", usuario_id, hashlib.sha256(token.encode()).hexdigest(),
+        datetime.now(timezone.utc) + min(vence_en, timedelta(0)) - timedelta(hours=1), datetime.now(timezone.utc) + vence_en)
+    return token
+
+
+def iniciar_sesion(c, correo, contrasena=CONTRASENA):
+    r = c.post("/api/auth/login", json={"correo": correo, "contrasena": contrasena}, headers={"Authorization": ""})
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+def bearer(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+SIN_TOKEN = {"Authorization": ""}

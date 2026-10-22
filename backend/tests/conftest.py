@@ -20,6 +20,8 @@ ADMIN_URL = os.environ.get("SGPIS_TEST_ADMIN_URL", "postgresql://postgres@localh
 PLANTILLA, PRUEBA = "sgpis_plantilla", "sgpis_prueba"
 
 _u = urlparse(ADMIN_URL)
+os.environ.setdefault("JWT_SECRET", "secreto-solo-para-pruebas-" + "x" * 40)
+os.environ.setdefault("JWT_EXPIRATION", "28800")
 os.environ["DATABASE_URL"] = f"postgresql+psycopg://{_u.username}{':' + _u.password if _u.password else ''}@{_u.hostname}:{_u.port or 5432}/{PRUEBA}"
 
 
@@ -101,5 +103,10 @@ def cliente(bd, contrato):
 
     with TestClient(app, base_url="http://localhost:8000", raise_server_exceptions=False) as c:
         c.event_hooks = {"request": [], "response": [lambda r: (r.read(), validar(r))]}
+        # Por defecto el cliente actúa como Coordinación AMPIP; las pruebas de seguridad cambian el encabezado.
+        from tests.ayudas import crear_activo, iniciar_sesion
+
+        crear_activo("coordinacion@ampip.mx", "coordinacion_ampip")
+        c.headers["Authorization"] = "Bearer " + iniciar_sesion(c, "coordinacion@ampip.mx")
         yield c
     assert not errores, "Respuestas fuera de contrato:\n" + "\n".join(errores)
