@@ -1,0 +1,398 @@
+' Diagrama entidad-relación generado desde la base cargada con esquema_bd.sql (no se edita a mano).
+@startuml er_sgpis
+hide circle
+skinparam linetype ortho
+title SGPIS: entidad-relación (desde esquema_bd.sql)
+
+entity actualizacion_anual {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * fecha : date
+    notas : text
+  * registrado_por : uuid <<FK>>
+}
+entity asignacion_consultor {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * consultor_id : uuid <<FK>>
+  * vigente_desde : timestamptz
+    vigente_hasta : timestamptz
+}
+entity autoevaluacion {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * criterio_id : uuid <<FK>>
+  * respuesta : respuesta_autoevaluacion
+    comentario : text
+  * fecha : timestamptz
+  * registrado_por : uuid <<FK>>
+}
+entity catalogo_fase {
+  * clave : varchar <<PK>>
+  --
+  * orden : int4
+  * nombre : varchar
+}
+entity clasificacion_tipo_pi {
+  * id : uuid <<PK>>
+  --
+  * parque_id : uuid <<FK>>
+  * tipo_pi : tipo_pi
+  * fecha_desde : date
+    fecha_hasta : date
+    motivo : text
+    porcentaje_obligatorios_al_cierre : numeric
+    porcentaje_avance_general_al_cierre : numeric
+    cambiado_por : uuid <<FK>>
+}
+entity configuracion {
+  * id : int2 <<PK>>
+  --
+  * tamano_maximo_evidencia_mb : int4
+  * vigencia_distintivo_anios : int4
+  * actualizado_en : timestamptz
+    actualizado_por : uuid <<FK>>
+}
+entity criterio {
+  * id : uuid <<PK>>
+  --
+  * subestandar_id : uuid <<FK>>
+  * clave : varchar
+  * texto : text
+  * metodo_verificacion : text
+    evidencia_suficiente : varchar
+  * categoria_evidencia : categoria_evidencia
+  * asterisco : bool
+}
+entity criterio_parque {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * criterio_id : uuid <<FK>>
+  * estado_calificacion : estado_calificacion
+    fecha_ultimo_cambio : timestamptz
+    motivo_reapertura : text
+    calificado_por : uuid <<FK>>
+}
+entity desarrollador {
+  * id : uuid <<PK>>
+  --
+  * nombre : varchar
+}
+entity dictamen {
+  * id : uuid <<PK>>
+  --
+  * sesion_comite_id : uuid <<FK>>
+  * tipo : tipo_dictamen
+  * motivo : text
+  * estado : estado_dictamen
+  * fecha_captura : timestamptz
+  * capturado_por : uuid <<FK>>
+    fecha_firma : timestamptz
+    firmado_por : uuid <<FK>>
+    vigencia_hasta : date
+}
+entity documento_analisis_riesgos {
+  * expediente_id : uuid <<PK>>
+  --
+  * nombre_archivo : varchar
+  * ruta_objeto : varchar
+  * tamano_bytes : int8
+  * fecha_carga : timestamptz
+  * subido_por : uuid <<FK>>
+}
+entity enlace_un_solo_uso {
+  * id : uuid <<PK>>
+  --
+  * usuario_id : uuid <<FK>>
+  * token_hash : varchar
+  * tipo : varchar
+  * creado : timestamptz
+  * expira_en : timestamptz
+    usado_en : timestamptz
+}
+entity estandar {
+  * id : uuid <<PK>>
+  --
+  * version_catalogo_id : uuid <<FK>>
+  * numero : int4
+  * nombre : varchar
+}
+entity evaluacion_desempeno {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * folio : varchar
+  * fecha : timestamptz
+  * version_catalogo : varchar
+  * resultado : text
+  * consultor_id : uuid <<FK>>
+}
+entity evidencia {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * fase : varchar <<FK>>
+  * categoria : categoria_evidencia
+    descripcion : text
+  * fecha_carga : timestamptz
+    eliminada_en : timestamptz
+    eliminada_por : uuid <<FK>>
+}
+entity expediente {
+  * id : uuid <<PK>>
+  --
+  * parque_id : uuid <<FK>>
+  * generacion_id : uuid <<FK>>
+    fecha_termino_programa : date
+    fecha_proxima_actualizacion : date
+}
+entity fase_expediente {
+  * expediente_id : uuid <<PK>>
+  * fase : varchar <<PK>>
+  --
+  * estado : estado_fase
+    fecha_inicio : timestamptz
+    fecha_cierre : timestamptz
+    motivo_excepcion : text
+    cerrada_por : uuid <<FK>>
+}
+entity generacion {
+  * id : uuid <<PK>>
+  --
+  * nombre : varchar
+  * fecha_inicio : date
+  * version_catalogo_id : uuid <<FK>>
+}
+entity intento_login {
+  * correo : varchar <<PK>>
+  --
+  * intentos_fallidos : int4
+    bloqueado_hasta : timestamptz
+}
+entity marca_por_tipo {
+  * criterio_id : uuid <<PK>>
+  * tipo_pi : tipo_pi <<PK>>
+  --
+  * marca : marca
+}
+entity mensaje_correo {
+  * id : uuid <<PK>>
+  --
+    usuario_id : uuid <<FK>>
+  * tipo : varchar
+  * destinatario : varchar
+  * asunto : varchar
+  * cuerpo : text
+  * creado_en : timestamptz
+  * intentos : int4
+    ultimo_error : text
+    enviado_en : timestamptz
+}
+entity observacion {
+  * id : uuid <<PK>>
+  --
+  * evidencia_id : uuid <<FK>>
+  * criterio_parque_id : uuid <<FK>>
+  * version : int4 <<FK>>
+  * motivo : text
+  * fecha : timestamptz
+  * notificado_a_appi : bool
+  * consultor_id : uuid <<FK>>
+}
+entity opinion_cumplimiento {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * tipo : tipo_opinion
+    favorable : bool
+    porcentaje_obligatorios : numeric
+    porcentaje_avance_general : numeric
+    comentarios : text
+  * fecha : timestamptz
+  * consultor_id : uuid <<FK>>
+}
+entity parque {
+  * id : uuid <<PK>>
+  --
+  * tipo_registro : varchar
+  * nombre : varchar
+    desarrollador_id : uuid <<FK>>
+  * region : region
+  * estado : estado_parque
+  * fecha_alta : date
+    motivo_baja : text
+    fecha_ultimo_dictamen : date
+    fecha_termino_historico : date
+    contacto_principal_id : uuid <<FK>>
+}
+entity recomendacion {
+  * id : uuid <<PK>>
+  --
+  * criterio_parque_id : uuid <<FK>>
+  * texto : text
+  * fecha : timestamptz
+  * consultor_id : uuid <<FK>>
+}
+entity registro_bitacora {
+  * id : int8 <<PK>>
+  --
+  * fecha_hora : timestamptz
+    usuario_id : uuid <<FK>>
+    rol : rol
+    parque_id : uuid <<FK>>
+  * accion : varchar
+    recurso_tipo : varchar
+    recurso_id : varchar
+  * resultado : varchar
+    detalle : text
+}
+entity renglon_plan_trabajo {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * criterio_parque_id : uuid <<FK>>
+  * responsable_id : uuid <<FK>>
+  * fecha_comprometida : date
+    fecha_marca_atraso : date
+}
+entity revision_analisis_riesgos {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * fecha_revision : date
+  * version : varchar
+  * firmante : varchar
+  * resumen : text
+  * ciclo : varchar
+  * registrado_por : uuid <<FK>>
+}
+entity sesion {
+  * sid : uuid <<PK>>
+  --
+  * usuario_id : uuid <<FK>>
+  * creada : timestamptz
+  * ultima_actividad : timestamptz
+  * expira_en : timestamptz
+    revocada_en : timestamptz
+}
+entity sesion_comite {
+  * id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * consultor_comite_id : uuid <<FK>>
+  * fecha_apertura : timestamptz
+    fecha_cierre : timestamptz
+}
+entity subestandar {
+  * id : uuid <<PK>>
+  --
+  * estandar_id : uuid <<FK>>
+  * numero : varchar
+  * nombre : varchar
+}
+entity usuario {
+  * id : uuid <<PK>>
+  --
+  * nombre : varchar
+  * correo : varchar
+    contrasena_hash : varchar
+  * rol : rol
+  * estado : estado_usuario
+  * fecha_alta : timestamptz
+    motivo_baja : text
+    parque_id : uuid <<FK>>
+    desarrollador_id : uuid <<FK>>
+}
+entity version_catalogo {
+  * id : uuid <<PK>>
+  --
+  * nombre : varchar
+  * estado : varchar
+  * fecha_carga : timestamptz
+  * cargado_por : uuid <<FK>>
+}
+entity version_evidencia {
+  * evidencia_id : uuid <<PK>>
+  * numero : int4 <<PK>>
+  --
+  * nombre_archivo : varchar
+  * tipo_mime : varchar
+  * tamano_bytes : int8
+  * ruta_objeto : varchar
+  * fecha_carga : timestamptz
+  * autor_id : uuid <<FK>>
+}
+entity vinculo_evidencia {
+  * evidencia_id : uuid <<PK>>
+  * criterio_parque_id : uuid <<PK>>
+  --
+  * expediente_id : uuid <<FK>>
+  * estado : estado_vinculo
+  * fecha_estado : timestamptz
+}
+usuario ||--o{ actualizacion_anual
+expediente ||--o{ actualizacion_anual
+usuario ||--o{ asignacion_consultor
+expediente ||--o{ asignacion_consultor
+usuario ||--o{ autoevaluacion
+expediente ||--o{ autoevaluacion
+criterio ||--o{ autoevaluacion
+usuario ||--o{ clasificacion_tipo_pi
+parque ||--o{ clasificacion_tipo_pi
+usuario ||--o{ configuracion
+subestandar ||--o{ criterio
+usuario ||--o{ criterio_parque
+expediente ||--o{ criterio_parque
+criterio ||--o{ criterio_parque
+usuario ||--o{ dictamen
+sesion_comite ||--o{ dictamen
+usuario ||--o{ dictamen
+usuario ||--o{ documento_analisis_riesgos
+expediente ||--o{ documento_analisis_riesgos
+usuario ||--o{ enlace_un_solo_uso
+version_catalogo ||--o{ estandar
+usuario ||--o{ evaluacion_desempeno
+expediente ||--o{ evaluacion_desempeno
+usuario ||--o{ evidencia
+catalogo_fase ||--o{ evidencia
+expediente ||--o{ evidencia
+generacion ||--o{ expediente
+parque ||--o{ expediente
+expediente ||--o{ fase_expediente
+usuario ||--o{ fase_expediente
+catalogo_fase ||--o{ fase_expediente
+version_catalogo ||--o{ generacion
+criterio ||--o{ marca_por_tipo
+usuario ||--o{ mensaje_correo
+vinculo_evidencia ||--o{ observacion
+usuario ||--o{ observacion
+version_evidencia ||--o{ observacion
+expediente ||--o{ opinion_cumplimiento
+usuario ||--o{ opinion_cumplimiento
+usuario ||--o{ parque
+desarrollador ||--o{ parque
+criterio_parque ||--o{ recomendacion
+usuario ||--o{ recomendacion
+usuario ||--o{ registro_bitacora
+parque ||--o{ registro_bitacora
+usuario ||--o{ renglon_plan_trabajo
+expediente ||--o{ renglon_plan_trabajo
+criterio_parque ||--o{ renglon_plan_trabajo
+expediente ||--o{ revision_analisis_riesgos
+usuario ||--o{ revision_analisis_riesgos
+usuario ||--o{ sesion
+expediente ||--o{ sesion_comite
+usuario ||--o{ sesion_comite
+estandar ||--o{ subestandar
+desarrollador ||--o{ usuario
+parque ||--o{ usuario
+usuario ||--o{ version_catalogo
+evidencia ||--o{ version_evidencia
+usuario ||--o{ version_evidencia
+evidencia ||--o{ vinculo_evidencia
+criterio_parque ||--o{ vinculo_evidencia
+@enduml

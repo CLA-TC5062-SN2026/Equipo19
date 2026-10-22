@@ -1,0 +1,35 @@
+
+### 0. Registro con la invitación
+$ curl -X POST http://localhost:8000/api/auth/register -H Content-Type: application/json -d {"tokenInvitacion":"<token_invitacion>","contrasena":"contrasena-demo-2026"}
+{"id":"f5048a10-670d-4bcb-b207-6a7efff9ff09","correo":"coordinacion.demo@ampip.mx","nombre":"Coordinación demo","rol":"coordinacion_ampip","parqueId":null,"desarrollador":null,"estado":"activo","fechaAlta":"2026-10-22T17:17:22.615161-06:00"}
+HTTP 201
+
+### 1. Ruta protegida sin token (esperado 401)
+$ curl -X POST http://localhost:8000/api/parques -H Content-Type: application/json -d {"tipoRegistro":"activo","nombre":"Parque Prueba Terminal","desarrollador":"Desarrolladora Demo","tipoPI":"operacion_cerrado","region":"MX-NLE","generacionId":"af09d0db-a8d9-4a08-9dd5-c966338b0717"}
+{"codigo":"sesion_invalida","mensaje":"La sesión no es válida o expiró; inicie sesión de nuevo"}
+HTTP 401
+
+### 2. Ruta protegida con token inválido, último carácter cambiado (esperado 401)
+$ curl -X POST http://localhost:8000/api/parques -H Authorization: Bearer <token> -H Content-Type: application/json -d {"tipoRegistro":"activo","nombre":"Parque Prueba Terminal","desarrollador":"Desarrolladora Demo","tipoPI":"operacion_cerrado","region":"MX-NLE","generacionId":"af09d0db-a8d9-4a08-9dd5-c966338b0717"}
+{"codigo":"sesion_invalida","mensaje":"La sesión no es válida o expiró; inicie sesión de nuevo"}
+HTTP 401
+
+### 3. Ruta protegida con rol incorrecto, APPI (esperado 403)
+$ curl -X POST http://localhost:8000/api/parques -H Authorization: Bearer <token> -H Content-Type: application/json -d {"tipoRegistro":"activo","nombre":"Parque Prueba Terminal","desarrollador":"Desarrolladora Demo","tipoPI":"operacion_cerrado","region":"MX-NLE","generacionId":"af09d0db-a8d9-4a08-9dd5-c966338b0717"}
+{"codigo":"sin_permiso","mensaje":"No tiene permiso para realizar esta operación"}
+HTTP 403
+
+### 4. Ruta protegida con token válido y rol correcto, Coordinación AMPIP (esperado 201)
+$ curl -X POST http://localhost:8000/api/parques -H Authorization: Bearer <token> -H Content-Type: application/json -d {"tipoRegistro":"activo","nombre":"Parque Prueba Terminal","desarrollador":"Desarrolladora Demo","tipoPI":"operacion_cerrado","region":"MX-NLE","generacionId":"af09d0db-a8d9-4a08-9dd5-c966338b0717"}
+{"id":"58e90d1f-377b-40e0-b0c0-d5e45370ab3c","tipoRegistro":"activo","nombre":"Parque Prueba Terminal","desarrollador":"Desarrolladora Demo","tipoPI":"operacion_cerrado","region":"MX-NLE","generacionId":"af09d0db-a8d9-4a08-9dd5-c966338b0717","estado":"activo","fase":"diagnostico","fechaAlta":"2026-10-22","versionCatalogo":"catalogo-sintetico-v1","consultorAsignadoId":null,"fechaTerminoPrograma":null,"fechaProximaActualizacion":null,"fechaUltimaActualizacion":null,"fechaUltimoDictamen":null,"atrasadoActualizacion":false,"motivoBaja":null,"contactoPrincipalId":null}
+HTTP 201
+
+### 5. APPI de Parque Demo consulta otro parque (esperado 403, RNF-01)
+$ curl http://localhost:8000/api/parques/58e90d1f-377b-40e0-b0c0-d5e45370ab3c -H Authorization: Bearer <token>
+{"codigo":"sin_permiso","mensaje":"No tiene permiso para realizar esta operación"}
+HTTP 403
+
+### 6. Bitácora: el intento denegado quedó registrado (esperado 200)
+$ curl http://localhost:8000/api/bitacora?accion=acceso_denegado&tamanoPagina=5 -H Authorization: Bearer <token>
+{"pagina":1,"tamanoPagina":5,"total":2,"items":[{"id":13,"fechaHora":"2026-10-22T17:17:47.878356-06:00","usuarioId":"6f1e1639-add1-459b-8caa-045db5b9a655","rol":"appi","parqueId":"58e90d1f-377b-40e0-b0c0-d5e45370ab3c","accion":"acceso_denegado","recursoTipo":"ruta","recursoId":"/api/parques/58e90d1f-377b-40e0-b0c0-d5e45370ab3c","resultado":"denegado","detalle":"GET /parques/{parqueId}: rol appi sin permiso sobre el parque"},{"id":11,"fechaHora":"2026-10-22T17:17:47.780019-06:00","usuarioId":"6f1e1639-add1-459b-8caa-045db5b9a655","rol":"appi","parqueId":null,"accion":"acceso_denegado","recursoTipo":"ruta","recursoId":"/api/parques","resultado":"denegado","detalle":"POST /parques: rol appi sin permiso para la operación"}]}
+HTTP 200

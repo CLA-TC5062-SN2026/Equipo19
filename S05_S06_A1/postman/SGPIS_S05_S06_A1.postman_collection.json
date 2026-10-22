@@ -1,0 +1,367 @@
+{
+  "info": {
+    "_postman_id": "54fc2a0b-67d7-4b1f-86fe-350da1926f9f",
+    "name": "SGPIS S05-S06-A1 CRUD (equipo 19)",
+    "description": "Pruebas CRUD de S05-S06-A1. Antes de correrla: base cargada con esquema_bd.sql y `uv run python -m app.semilla`. Desde S05-S06-A2 las rutas exigen token: el primer request inicia sesión con la cuenta de la semilla (coordCorreo, coordContrasena). Correr en orden.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "0. Generaciones (GET 200)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/generaciones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "generaciones"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Desde S05-S06-A2 las rutas exigen token: inicia sesión con la cuenta de Coordinación de la semilla.",
+              "pm.sendRequest({url: pm.variables.get('baseUrl') + '/api/auth/login', method: 'POST', header: {'Content-Type': 'application/json'},",
+              "  body: {mode: 'raw', raw: JSON.stringify({correo: pm.variables.get('coordCorreo'), contrasena: pm.variables.get('coordContrasena')})}},",
+              "  (e, r) => { pm.collectionVariables.set('token', r.json().token); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const g = pm.response.json(); pm.test('hay generación (corre app.semilla)', () => pm.expect(g.length).to.be.above(0));",
+              "pm.collectionVariables.set('generacionId', g[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Alta de parque (POST 201)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipoRegistro\": \"activo\",\n  \"nombre\": \"Parque Industrial Demo {{$randomInt}}\",\n  \"desarrollador\": \"Desarrolladora Demo\",\n  \"tipoPI\": \"construccion_cerrado\",\n  \"region\": \"MX-NLE\",\n  \"generacionId\": \"{{generacionId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201', () => pm.response.to.have.status(201));",
+              "const p = pm.response.json(); pm.test('estado activo, fase diagnóstico', () => { pm.expect(p.estado).to.eql('activo'); pm.expect(p.fase).to.eql('diagnostico'); });",
+              "pm.collectionVariables.set('parqueId', p.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Consultar parque (GET 200)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques/{{parqueId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques",
+            "{{parqueId}}"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "pm.test('persistió', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('parqueId')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Cambiar tipo de PI (PUT 200)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques/{{parqueId}}/tipo-pi",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques",
+            "{{parqueId}}",
+            "tipo-pi"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipoPI\": \"operacion_cerrado\",\n  \"fechaCambio\": \"2027-06-01\",\n  \"motivo\": \"El parque inició operaciones\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const r = pm.response.json(); pm.test('recalculó criterios', () => pm.expect(r.criteriosQueDejanDeSerNA.length).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Alta de usuario APPI (POST 201)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/usuarios",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "usuarios"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"gerente{{$timestamp}}@parquedemo.mx\",\n  \"nombre\": \"Gerente de seguridad\",\n  \"rol\": \"appi\",\n  \"parqueId\": \"{{parqueId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201', () => pm.response.to.have.status(201));",
+              "const u = pm.response.json(); pm.test('pendiente de activación y sin contraseña', () => { pm.expect(u.estado).to.eql('pendiente_activacion'); pm.expect(u).to.not.have.property('contrasena'); });",
+              "pm.collectionVariables.set('usuarioId', u.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Fechas del programa (PATCH 200)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques/{{parqueId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques",
+            "{{parqueId}}"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fechaTerminoPrograma\": \"2027-11-30\",\n  \"fechaProximaActualizacion\": \"2028-02-01\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "pm.test('fechas guardadas', () => pm.expect(pm.response.json().fechaProximaActualizacion).to.eql('2028-02-01'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Usuarios APPI del parque (GET 200)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques/{{parqueId}}/usuarios",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques",
+            "{{parqueId}}",
+            "usuarios"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "pm.test('aparece la APPI creada', () => pm.expect(pm.response.json().map(u => u.id)).to.include(pm.collectionVariables.get('usuarioId')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Parque inexistente (GET 404)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques/00000000-0000-0000-0000-000000000000",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques",
+            "00000000-0000-0000-0000-000000000000"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('404 con formato Error', () => { pm.response.to.have.status(404); pm.expect(pm.response.json()).to.have.property('codigo'); });"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "coordCorreo",
+      "value": "coordinacion@ampip.local"
+    },
+    {
+      "key": "coordContrasena",
+      "value": "PEGAR_SEMILLA_CONTRASENA"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "generacionId",
+      "value": ""
+    },
+    {
+      "key": "parqueId",
+      "value": ""
+    },
+    {
+      "key": "usuarioId",
+      "value": ""
+    }
+  ]
+}

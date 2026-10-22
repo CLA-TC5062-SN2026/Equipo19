@@ -1,0 +1,640 @@
+/auth/register:
+  post:
+    tags: [Autenticación]
+    operationId: registrarUsuario
+    summary: Registrar la contraseña de una cuenta invitada
+    description: |
+      Completa el registro de una cuenta que Coordinación AMPIP dio de alta con `POST /usuarios` (RF-03-AC-1). El
+      usuario envía el token de la invitación que recibió por correo y su contraseña; el servidor guarda solo el hash
+      bcrypt, pasa la cuenta de "pendiente de activación" a "activo" y responde 201 con los datos del usuario, nunca
+      con la contraseña ni con el hash.
+
+      No existe auto-registro abierto: el SRS de equipo (RF-03) reserva el alta de cuentas y la asignación de rol a
+      Coordinación AMPIP. Sin un token de invitación vigente no se crea ninguna credencial.
+
+      Errores:
+      - 410 `enlace_no_vigente`: la invitación ya se usó o venció.
+      - 422 `contrasena_debil`: "La contraseña debe tener al menos 10 caracteres".
+    security: []
+    x-acceptance-criteria: [RF-03-AC-1]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RegistroCreate'
+    responses:
+      '201':
+        description: Credencial creada y cuenta activada.
+        headers:
+          Location:
+            $ref: '#/components/headers/Location'
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Usuario'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '410':
+        $ref: '#/components/responses/Gone'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/auth/login:
+  post:
+    tags: [Autenticación]
+    operationId: iniciarSesion
+    summary: Iniciar sesión
+    description: |
+      Autentica con correo y contraseña, crea una sesión en servidor y devuelve un JWT con los claims `sub`
+      (usuario), `sid` (sesión), `iat` y `exp`. `exp` es la expiración absoluta del token (variable de entorno
+      `JWT_EXPIRATION`); además, la sesión expira tras 60 minutos sin actividad (RF-26-AC-6). Lo que ocurra primero.
+
+      Tras 5 intentos fallidos consecutivos la cuenta queda bloqueada 15 minutos, aun con la contraseña correcta.
+      El contador corre también para correos que no existen, para no revelar qué cuentas están registradas. Una
+      cuenta "pendiente de activación" o "inactiva" responde 401 con el mismo mensaje que credenciales inválidas.
+
+      Errores:
+      - 401 `credenciales_invalidas`: "Correo o contraseña incorrectos".
+      - 429 `cuenta_bloqueada`: "Cuenta bloqueada temporalmente; intente de nuevo en 15 minutos", con `Retry-After`.
+    security: []
+    x-acceptance-criteria: [RF-26-AC-1, RF-26-AC-2, RF-26-AC-3]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SesionCreate'
+    responses:
+      '200':
+        description: Sesión creada; se entrega el token.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesionCreada'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '429':
+        $ref: '#/components/responses/TooManyRequests'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/auth/me:
+  get:
+    tags: [Autenticación]
+    operationId: obtenerUsuarioActual
+    summary: Consultar el usuario y la sesión del token
+    description: |
+      Devuelve los datos del usuario autenticado y de su sesión. Si la sesión lleva 60 minutos sin actividad, fue
+      revocada, el token expiró o el usuario fue dado de baja, responde 401. Como cualquier otra solicitud, esta
+      consulta cuenta como actividad.
+    x-acceptance-criteria: [RF-26-AC-6]
+    responses:
+      '200':
+        description: Sesión vigente.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesionActual'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/auth/logout:
+  post:
+    tags: [Autenticación]
+    operationId: cerrarSesion
+    summary: Cerrar sesión
+    description: |
+      Revoca la sesión `sid` del token. Cualquier solicitud posterior con ese token responde 401. Se conserva la forma
+      RPC del espacio `/auth` (register, login, logout) que fijó la tarea T-10 del Sprint 1.
+    x-acceptance-criteria: [RF-26-AC-5]
+    responses:
+      '204':
+        description: Sesión revocada.
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/configuracion:
+  get:
+    tags: [Configuración]
+    operationId: obtenerConfiguracion
+    summary: Consultar los parámetros del programa
+    description: Límite de tamaño de evidencia (RF-06) y vigencia del distintivo (RD-08). Solo Coordinación AMPIP.
+    x-acceptance-criteria: [RF-06-AC-6]
+    responses:
+      '200':
+        description: Parámetros vigentes.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Configuracion'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '500':
+        $ref: '#/components/responses/InternalError'
+  patch:
+    tags: [Configuración]
+    operationId: actualizarConfiguracion
+    summary: Cambiar parámetros del programa
+    description: |
+      Coordinación AMPIP cambia el límite de tamaño de evidencia (1 a 100 MB) o la vigencia del distintivo. El
+      cambio aplica a las cargas siguientes y queda en la bitácora.
+
+      Errores:
+      - 422 `limite_excede_maximo`: "El límite máximo configurable es 100 MB"; se conserva el valor anterior.
+    x-acceptance-criteria: [RF-06-AC-6, RF-06-AC-7]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfiguracionUpdate'
+    responses:
+      '200':
+        description: Parámetros actualizados.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Configuracion'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/evidencias:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  post:
+    tags: [Evidencias]
+    operationId: crearEvidencias
+    summary: Subir uno o varios archivos de evidencia vinculados a uno o varios criterios
+    description: |
+      La APPI del parque sube de 1 a 10 archivos en una operación y los vincula a uno o más criterios aplicables del
+      parque. Por cada archivo válido se crea una evidencia con un vínculo por criterio, cada vínculo en estado
+      "enviada" (C-19). Se guardan nombre original, tipo, tamaño, fecha y hora, versión, autor y la referencia al
+      objeto; el archivo nunca se guarda en PostgreSQL. Como efecto lateral, cada criterio vinculado que estaba
+      "pendiente", "cumplido" o "no cumplido" pasa a "en revisión".
+
+      Los archivos que no pasan la validación se reportan en `rechazadas` con su motivo y no detienen a los demás
+      (RF-05-AC-8). Si se envía un solo archivo y se rechaza, la respuesta es el error correspondiente (413 o 422).
+      El límite de tamaño es el configurado en `/configuracion` (inicial 100 MB, inclusive). Formatos permitidos:
+      PDF, JPG, PNG, HEIC, XLSX y DOCX. Gerente corporativo, Coordinación AMPIP y consultores reciben 403.
+
+      Errores:
+      - 413 `archivo_excede_limite`: "El archivo supera el límite de {n} MB".
+      - 422 `formato_video_no_permitido`: "Este sistema no acepta archivos de video; suba una fotografía o captura de
+        pantalla con fecha visible".
+      - 422 `formato_no_permitido`: "Formato de archivo no permitido; use PDF, JPG, PNG, HEIC, XLSX o DOCX".
+      - 422 `criterio_no_aplica`: "Este criterio no aplica al tipo de PI del parque".
+    x-acceptance-criteria: [RF-05-AC-1, RF-05-AC-5, RF-05-AC-7, RF-05-AC-8, RF-06-AC-1, RF-06-AC-2, RF-06-AC-3, RF-06-AC-4, RF-06-AC-5, RF-06-AC-6, RF-17-AC-3, RF-23-AC-2, RF-27-AC-4, RF-27-AC-7]
+    parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            $ref: '#/components/schemas/EvidenciaCreate'
+    responses:
+      '201':
+        description: Al menos un archivo se aceptó; el cuerpo lista los creados y los rechazados.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaEvidencias'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '413':
+        $ref: '#/components/responses/PayloadTooLarge'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/evidencias/{evidenciaId}/vinculos/{criterioId}:
+  parameters:
+    - $ref: '#/components/parameters/EvidenciaId'
+    - $ref: '#/components/parameters/CriterioId'
+  patch:
+    tags: [Evidencias]
+    operationId: aceptarVinculoEvidencia
+    summary: Aceptar la evidencia para un criterio
+    description: |
+      El consultor asignado marca como "aceptada" la evidencia para ese criterio. El estado vive en el vínculo, así
+      que aceptar el Reglamento Interno para 3.1 no lo acepta para 3.4 (RF-05-AC-7). "Observada" no se fija por aquí:
+      se registra con `POST /evidencias/{evidenciaId}/observaciones`.
+
+      Errores:
+      - 409 `transicion_no_permitida`: el vínculo no está en "enviada".
+    x-acceptance-criteria: [RF-27-AC-1, RF-27-AC-5, RF-05-AC-7]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VinculoEvidenciaUpdate'
+    responses:
+      '200':
+        description: Vínculo aceptado.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VinculoEvidencia'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '409':
+        $ref: '#/components/responses/Conflict'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/fases:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  get:
+    tags: [Fases]
+    operationId: listarFasesParque
+    summary: Consultar las fases del expediente
+    description: |
+      Las nueve fases de la secuencia (guardada como datos, C-15) con su estado para el expediente vigente:
+      "pendiente", "en proceso", "completada" o "avanzada por excepción". Una fase con entregables subidos sigue "en
+      proceso" hasta que Coordinación AMPIP la cierra o ocurre el evento que la define (RF-32-AC-2).
+    x-acceptance-criteria: [RF-32-AC-1, RF-32-AC-2]
+    responses:
+      '200':
+        description: Fases del expediente en orden.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FaseExpediente'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/fases/{fase}/cierre:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+    - $ref: '#/components/parameters/FasePath'
+  post:
+    tags: [Fases]
+    operationId: cerrarFase
+    summary: Cerrar una fase del expediente
+    description: |
+      Coordinación AMPIP cierra la fase actual: queda "completada" con usuario y fecha, y la siguiente pasa a "en
+      proceso". APPI y consultores reciben 403 (RF-32-AC-3).
+
+      Errores:
+      - 409 `fase_no_actual`: solo se cierra la fase en curso.
+    x-acceptance-criteria: [RF-32-AC-3]
+    responses:
+      '200':
+        description: Fase cerrada.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaseExpediente'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '409':
+        $ref: '#/components/responses/Conflict'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/avances-fase:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  post:
+    tags: [Fases]
+    operationId: crearAvanceFase
+    summary: Avanzar de fase por excepción
+    description: |
+      Coordinación AMPIP pasa el parque a la fase siguiente sin cerrar la actual. La fase anterior queda "avanzada por
+      excepción" con motivo, usuario y fecha, y la operación queda en la bitácora (RF-35).
+
+      Errores:
+      - 422 `motivo_requerido`: "Para avanzar sin cerrar la fase actual registre el motivo de la excepción".
+      - 409 `fase_destino_invalida`: la fase destino no es la siguiente de la secuencia.
+    x-acceptance-criteria: [RF-32-AC-4, RF-32-AC-5]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AvanceFaseCreate'
+    responses:
+      '201':
+        description: Avance registrado.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FaseExpediente'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '409':
+        $ref: '#/components/responses/Conflict'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/evaluaciones-desempeno:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  get:
+    tags: [Opiniones de Cumplimiento]
+    operationId: listarEvaluacionesDesempeno
+    summary: Listar Evaluaciones de Desempeño del parque
+    x-acceptance-criteria: [RF-33-AC-1]
+    responses:
+      '200':
+        description: Evaluaciones registradas.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/EvaluacionDesempeno'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '500':
+        $ref: '#/components/responses/InternalError'
+  post:
+    tags: [Opiniones de Cumplimiento]
+    operationId: crearEvaluacionDesempeno
+    summary: Registrar la Evaluación de Desempeño
+    description: |
+      El consultor asignado registra la Evaluación de Desempeño después de la Opinión final. El sistema asigna folio
+      consecutivo por generación ("ED-2027-0007") y marca la fase "Evaluación de Desempeño" como completada.
+
+      Errores:
+      - 422 `opinion_final_requerida`: "La Evaluación de Desempeño requiere la Opinión de Cumplimiento final".
+    x-acceptance-criteria: [RF-33-AC-1, RF-33-AC-2, RF-33-AC-3]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EvaluacionDesempenoCreate'
+    responses:
+      '201':
+        description: Evaluación registrada.
+        headers:
+          Location:
+            $ref: '#/components/headers/Location'
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluacionDesempeno'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/usuarios:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  get:
+    tags: [Usuarios]
+    operationId: listarUsuariosParque
+    summary: Listar los usuarios APPI del parque
+    description: Usuarios APPI del parque con la marca de contacto principal. Solo Coordinación AMPIP.
+    x-acceptance-criteria: [RF-34-AC-1, RF-34-AC-3]
+    responses:
+      '200':
+        description: Usuarios APPI del parque.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/UsuarioParque'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/contacto-principal:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+  put:
+    tags: [Usuarios]
+    operationId: fijarContactoPrincipal
+    summary: Designar el contacto principal de la APPI
+    description: |
+      Coordinación AMPIP marca a un usuario APPI activo del parque como contacto principal; el anterior pierde la
+      marca en la misma transacción. Repetir la misma designación responde 200 sin efectos.
+
+      Errores:
+      - 422 `contacto_no_appi_del_parque`: "El contacto principal debe ser un usuario APPI activo de este parque".
+    x-acceptance-criteria: [RF-34-AC-2]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ContactoPrincipalUpdate'
+    responses:
+      '200':
+        description: Contacto principal designado.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioParque'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/bitacora:
+  get:
+    tags: [Bitácora]
+    operationId: listarBitacora
+    summary: Consultar la bitácora
+    description: |
+      Solo Coordinación AMPIP consulta la bitácora, del registro más reciente al más antiguo, con filtros por parque,
+      usuario, acción y rango de fechas. Ningún registro trae el contenido ni un enlace al contenido de una evidencia.
+      Los registros los crea el servidor como efecto de cada operación auditada (incluidos los 403, RF-35-AC-2); no
+      hay operación para crear, modificar ni borrar registros (RNF-03).
+    x-acceptance-criteria: [RF-35-AC-1, RF-35-AC-2, RF-35-AC-3, RF-35-AC-4]
+    parameters:
+      - name: parqueId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: usuarioId
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: accion
+        in: query
+        required: false
+        schema:
+          type: string
+          example: descargar
+      - name: desde
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: hasta
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+      - $ref: '#/components/parameters/Pagina'
+      - $ref: '#/components/parameters/TamanoPagina'
+    responses:
+      '200':
+        description: Página de registros.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaginaBitacora'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'
+
+/parques/{parqueId}/criterios/{criterioId}/recomendaciones:
+  parameters:
+    - $ref: '#/components/parameters/ParqueId'
+    - $ref: '#/components/parameters/CriterioId'
+  get:
+    tags: [Criterios del parque]
+    operationId: listarRecomendaciones
+    summary: Listar recomendaciones del consultor en un criterio
+    x-acceptance-criteria: [RF-36-AC-1]
+    responses:
+      '200':
+        description: Recomendaciones del criterio.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Recomendacion'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '500':
+        $ref: '#/components/responses/InternalError'
+  post:
+    tags: [Criterios del parque]
+    operationId: crearRecomendacion
+    summary: Registrar una recomendación del consultor
+    description: |
+      El consultor asignado deja una recomendación en el criterio, aunque siga "pendiente". No cambia el estado de
+      ninguna evidencia ni la calificación del criterio, y no aparece entre las observaciones (RF-36-AC-2).
+    x-acceptance-criteria: [RF-36-AC-1, RF-36-AC-2]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RecomendacionCreate'
+    responses:
+      '201':
+        description: Recomendación registrada.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Recomendacion'
+      '400':
+        $ref: '#/components/responses/BadRequest'
+      '401':
+        $ref: '#/components/responses/Unauthorized'
+      '403':
+        $ref: '#/components/responses/Forbidden'
+      '404':
+        $ref: '#/components/responses/NotFound'
+      '422':
+        $ref: '#/components/responses/UnprocessableEntity'
+      '500':
+        $ref: '#/components/responses/InternalError'

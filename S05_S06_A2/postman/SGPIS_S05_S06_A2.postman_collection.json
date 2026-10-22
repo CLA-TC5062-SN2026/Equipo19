@@ -1,0 +1,360 @@
+{
+  "info": {
+    "_postman_id": "778fb4d1-16c5-4abc-b791-1c71a9a8cff8",
+    "name": "SGPIS S05-S06-A2 Autenticación (equipo 19)",
+    "description": "Flujo register → login → me → ruta protegida → sin token → rol incorrecto. Antes: base nueva, `uv run python -m app.semilla --demo`, copiar el token que imprime en la variable tokenInvitacion y la contraseña de la APPI demo en appiContrasena.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. POST /auth/register (201)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tokenInvitacion\": \"{{tokenInvitacion}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201', () => pm.response.to.have.status(201));",
+              "pm.test('sin contraseña en la respuesta', () => pm.expect(pm.response.text().toLowerCase()).to.not.include('contrasena'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. POST /auth/login (200, token JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const t = pm.response.json().token; pm.test('token JWT', () => pm.expect(t.split('.').length).to.eql(3));",
+              "pm.collectionVariables.set('token', t);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. GET /auth/me (200)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "me"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "pm.test('usuario del token', () => pm.expect(pm.response.json().usuario.correo).to.eql(pm.variables.get('correo')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. POST /parques con token válido (201)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipoRegistro\": \"activo\",\n  \"nombre\": \"Parque Video {{$randomInt}}\",\n  \"desarrollador\": \"Desarrolladora Demo\",\n  \"tipoPI\": \"operacion_cerrado\",\n  \"region\": \"MX-NLE\",\n  \"generacionId\": \"{{generacionId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// generacionId de la semilla",
+              "pm.sendRequest({url: pm.variables.get('baseUrl') + '/api/generaciones', header: {Authorization: 'Bearer ' + pm.variables.get('token')}}, (e, r) => { pm.collectionVariables.set('generacionId', r.json()[0].id); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201', () => pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. POST /parques sin token (401)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipoRegistro\": \"activo\",\n  \"nombre\": \"Parque Video {{$randomInt}}\",\n  \"desarrollador\": \"Desarrolladora Demo\",\n  \"tipoPI\": \"operacion_cerrado\",\n  \"region\": \"MX-NLE\",\n  \"generacionId\": \"{{generacionId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. POST /parques con token de APPI (403)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/parques",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "parques"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{tokenAppi}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tipoRegistro\": \"activo\",\n  \"nombre\": \"Parque Video {{$randomInt}}\",\n  \"desarrollador\": \"Desarrolladora Demo\",\n  \"tipoPI\": \"operacion_cerrado\",\n  \"region\": \"MX-NLE\",\n  \"generacionId\": \"{{generacionId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Inicia sesión como la APPI de demostración y guarda su token en tokenAppi.",
+              "pm.sendRequest({url: pm.variables.get('baseUrl') + '/api/auth/login', method: 'POST', header: {'Content-Type': 'application/json'},",
+              "  body: {mode: 'raw', raw: JSON.stringify({correo: pm.variables.get('appiCorreo'), contrasena: pm.variables.get('appiContrasena')})}},",
+              "  (e, r) => { pm.collectionVariables.set('tokenAppi', r.json().token); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('403', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "tokenInvitacion",
+      "value": "PEGAR_TOKEN_DE_LA_SEMILLA"
+    },
+    {
+      "key": "correo",
+      "value": "coordinacion.demo@ampip.mx"
+    },
+    {
+      "key": "contrasena",
+      "value": "contrasena-demo-2026"
+    },
+    {
+      "key": "appiCorreo",
+      "value": "appi.demo@parquedemo.mx"
+    },
+    {
+      "key": "appiContrasena",
+      "value": "PEGAR_SEMILLA_APPI_CONTRASENA"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "tokenAppi",
+      "value": ""
+    },
+    {
+      "key": "generacionId",
+      "value": ""
+    }
+  ]
+}

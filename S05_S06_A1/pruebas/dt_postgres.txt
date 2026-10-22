@@ -1,0 +1,40 @@
+                   List of relations
+ Schema |            Name            | Type  |  Owner   
+--------+----------------------------+-------+----------
+ public | actualizacion_anual        | table | postgres
+ public | asignacion_consultor       | table | postgres
+ public | autoevaluacion             | table | postgres
+ public | catalogo_fase              | table | postgres
+ public | clasificacion_tipo_pi      | table | postgres
+ public | configuracion              | table | postgres
+ public | criterio                   | table | postgres
+ public | criterio_parque            | table | postgres
+ public | desarrollador              | table | postgres
+ public | dictamen                   | table | postgres
+ public | documento_analisis_riesgos | table | postgres
+ public | enlace_un_solo_uso         | table | postgres
+ public | estandar                   | table | postgres
+ public | evaluacion_desempeno       | table | postgres
+ public | evidencia                  | table | postgres
+ public | expediente                 | table | postgres
+ public | fase_expediente            | table | postgres
+ public | generacion                 | table | postgres
+ public | intento_login              | table | postgres
+ public | marca_por_tipo             | table | postgres
+ public | mensaje_correo             | table | postgres
+ public | observacion                | table | postgres
+ public | opinion_cumplimiento       | table | postgres
+ public | parque                     | table | postgres
+ public | recomendacion              | table | postgres
+ public | registro_bitacora          | table | postgres
+ public | renglon_plan_trabajo       | table | postgres
+ public | revision_analisis_riesgos  | table | postgres
+ public | sesion                     | table | postgres
+ public | sesion_comite              | table | postgres
+ public | subestandar                | table | postgres
+ public | usuario                    | table | postgres
+ public | version_catalogo           | table | postgres
+ public | version_evidencia          | table | postgres
+ public | vinculo_evidencia          | table | postgres
+(35 rows)
+

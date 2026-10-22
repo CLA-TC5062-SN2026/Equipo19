@@ -1,0 +1,60 @@
+newman
+
+SGPIS S05-S06-A1 CRUD (equipo 19)
+
+→ 0. Generaciones (GET 200)
+  GET http://localhost:8000/api/generaciones [200 OK, 340B, 29ms]
+  ✓  200
+  ✓  hay generación (corre app.semilla)
+
+→ 1. Alta de parque (POST 201)
+  POST http://localhost:8000/api/parques [201 Created, 769B, 33ms]
+  ✓  201
+  ✓  estado activo, fase diagnóstico
+
+→ 2. Consultar parque (GET 200)
+  GET http://localhost:8000/api/parques/d4aaf17a-e214-4c12-bb6c-6509343ce8f3 [200 OK, 703B, 10ms]
+  ✓  200
+  ✓  persistió
+
+→ 3. Cambiar tipo de PI (PUT 200)
+  PUT http://localhost:8000/api/parques/d4aaf17a-e214-4c12-bb6c-6509343ce8f3/tipo-pi [200 OK, 1.47kB, 29ms]
+  ✓  200
+  ✓  recalculó criterios
+
+→ 4. Alta de usuario APPI (POST 201)
+  POST http://localhost:8000/api/usuarios [201 Created, 476B, 12ms]
+  ✓  201
+  ✓  pendiente de activación y sin contraseña
+
+→ 5. Renglón del plan de trabajo (POST 201)
+  POST http://localhost:8000/api/parques/d4aaf17a-e214-4c12-bb6c-6509343ce8f3/plan-trabajo [201 Created, 590B, 12ms]
+  ✓  201
+
+→ 6. Eliminar renglón (DELETE 204)
+  DELETE http://localhost:8000/api/parques/d4aaf17a-e214-4c12-bb6c-6509343ce8f3/plan-trabajo/839d1c58-83b8-4a6d-babb-55812f28e15b [204 No Content, 81B, 10ms]
+  ✓  204
+
+→ 7. El renglón ya no existe (GET 404)
+  GET http://localhost:8000/api/parques/d4aaf17a-e214-4c12-bb6c-6509343ce8f3/plan-trabajo/839d1c58-83b8-4a6d-babb-55812f28e15b [404 Not Found, 223B, 8ms]
+  ✓  404 con formato Error
+
+┌─────────────────────────┬──────────────────┬─────────────────┐
+│                         │         executed │          failed │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              iterations │                1 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│                requests │                8 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│            test-scripts │                8 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│      prerequest-scripts │                0 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              assertions │               13 │               0 │
+├─────────────────────────┴──────────────────┴─────────────────┤
+│ total run duration: 276ms                                    │
+├──────────────────────────────────────────────────────────────┤
+│ total data received: 3.43kB (approx)                         │
+├──────────────────────────────────────────────────────────────┤
+│ average response time: 17ms [min: 8ms, max: 33ms, s.d.: 9ms] │
+└──────────────────────────────────────────────────────────────┘

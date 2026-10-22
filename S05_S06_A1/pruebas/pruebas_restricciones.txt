@@ -1,0 +1,47 @@
+--- R-02 vínculo evidencia de X con criterio de Y (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:17: ERROR:  insert or update on table "vinculo_evidencia" violates foreign key constraint "fk_vinculo_criterio_parque"
+DETAIL:  Key (criterio_parque_id, expediente_id)=(00000000-0000-0000-0000-000000000302, 00000000-0000-0000-0000-000000000201) is not present in table "criterio_parque".
+--- R-02 vínculo correcto (debe pasar)
+--- R-03 renglón con criterio de otro expediente (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:21: ERROR:  insert or update on table "renglon_plan_trabajo" violates foreign key constraint "fk_renglon_criterio_parque"
+DETAIL:  Key (criterio_parque_id, expediente_id)=(00000000-0000-0000-0000-000000000302, 00000000-0000-0000-0000-000000000201) is not present in table "criterio_parque".
+--- R-04 borrar parque con expediente (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:23: ERROR:  update or delete on table "parque" violates foreign key constraint "fk_usuario_parque" on table "usuario"
+DETAIL:  Key (id)=(00000000-0000-0000-0000-000000000101) is still referenced from table "usuario".
+--- R-05 contacto principal APPI de otro parque (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:25: ERROR:  insert or update on table "parque" violates foreign key constraint "fk_parque_contacto_principal"
+DETAIL:  Key (contacto_principal_id, id)=(00000000-0000-0000-0000-000000000012, 00000000-0000-0000-0000-000000000101) is not present in table "usuario".
+--- R-05 contacto principal correcto (debe pasar)
+--- R-06 consultor con parque_id (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:29: ERROR:  new row for relation "usuario" violates check constraint "ck_usuario_appi_con_parque"
+DETAIL:  Failing row contains (d347b87c-b8e3-4da0-a545-77b143c1de76, Cons, c@x.mx, null, consultor, pendiente_activacion, 2026-10-22 16:22:33.031645-06, null, 00000000-0000-0000-0000-000000000101, null).
+--- R-01 parque histórico sin fecha de término (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:31: ERROR:  new row for relation "parque" violates check constraint "ck_parque_historico_datos"
+DETAIL:  Failing row contains (794d32dd-9599-465f-9c84-16d6b8c23754, historico, Parque Z, null, MX-JAL, historico, 2026-10-22, null, 2022-03-15, null, null).
+--- R-07 dos fases en proceso (la segunda debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:34: ERROR:  duplicate key value violates unique constraint "uq_fase_expediente_en_proceso"
+DETAIL:  Key (expediente_id)=(00000000-0000-0000-0000-000000000201) already exists.
+--- R-08 TRUNCATE bitácora (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:37: ERROR:  registro_bitacora es de solo append: TRUNCATE no permitido
+CONTEXT:  PL/pgSQL function bitacora_solo_append() line 3 at RAISE
+--- bitácora UPDATE (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:39: ERROR:  registro_bitacora es de solo append: UPDATE no permitido
+CONTEXT:  PL/pgSQL function bitacora_solo_append() line 3 at RAISE
+--- R-09 intento_login con mayúsculas (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:41: ERROR:  new row for relation "intento_login" violates check constraint "intento_login_correo_check"
+DETAIL:  Failing row contains (Appi@X.mx, 0, null).
+--- correo duplicado sin distinguir mayúsculas (debe fallar)
+psql:/home/claude/work/pruebas_restricciones.sql:43: ERROR:  duplicate key value violates unique constraint "uq_usuario_correo"
+DETAIL:  Key (lower(correo::text))=(coord@ampip.mx) already exists.
+--- R-11 datos iniciales
+ fases 
+-------
+     9
+
+ tamano_maximo_evidencia_mb | vigencia_distintivo_anios 
+----------------------------+---------------------------
+                        100 |                         3
+
+--- R-04 (aislado) borrar parque Y cuyo único dependiente es su expediente (debe fallar por expediente)
+ERROR:  update or delete on table "parque" violates foreign key constraint "expediente_parque_id_fkey" on table "expediente"
+DETAIL:  Key (id)=(00000000-0000-0000-0000-000000000102) is still referenced from table "expediente".

@@ -1,0 +1,52 @@
+newman
+
+SGPIS S05-S06-A2 Autenticación (equipo 19)
+
+→ 1. POST /auth/register (201)
+  POST http://localhost:8000/api/auth/register [201 Created, 435B, 384ms]
+  ✓  201
+  ✓  sin contraseña en la respuesta
+
+→ 2. POST /auth/login (200, token JWT)
+  POST http://localhost:8000/api/auth/login [200 OK, 748B, 297ms]
+  ✓  200
+  ✓  token JWT
+
+→ 3. GET /auth/me (200)
+  GET http://localhost:8000/api/auth/me [200 OK, 549B, 12ms]
+  ✓  200
+  ✓  usuario del token
+
+→ 4. POST /parques con token válido (201)
+  GET http://localhost:8000/api/generaciones [200 OK, 340B, 27ms]
+  POST http://localhost:8000/api/parques [201 Created, 756B, 63ms]
+  ✓  201
+
+→ 5. POST /parques sin token (401)
+  POST http://localhost:8000/api/parques [401 Unauthorized, 262B, 4ms]
+  ✓  401
+
+→ 6. POST /parques con token de APPI (403)
+  POST http://localhost:8000/api/auth/login [200 OK, 756B, 265ms]
+  POST http://localhost:8000/api/parques [403 Forbidden, 215B, 12ms]
+  ✓  403
+
+┌─────────────────────────┬────────────────────┬───────────────────┐
+│                         │           executed │            failed │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              iterations │                  1 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│                requests │                  8 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│            test-scripts │                  6 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│      prerequest-scripts │                  2 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              assertions │                  9 │                 0 │
+├─────────────────────────┴────────────────────┴───────────────────┤
+│ total run duration: 1226ms                                       │
+├──────────────────────────────────────────────────────────────────┤
+│ total data received: 2.83kB (approx)                             │
+├──────────────────────────────────────────────────────────────────┤
+│ average response time: 133ms [min: 4ms, max: 384ms, s.d.: 145ms] │
+└──────────────────────────────────────────────────────────────────┘
