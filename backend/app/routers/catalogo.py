@@ -5,13 +5,14 @@ import io
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Response, UploadFile
+from fastapi import APIRouter, File, Form, Request, Response, UploadFile
 from sqlalchemy import func, select
 
 from app import esquemas as e
 from app.comun import DB, Actor, registrar_bitacora
 from app.errores import ErrorAPI, no_encontrado
 from app.modelos import Criterio, Estandar, MarcaPorTipo, Subestandar, VersionCatalogo
+from app.permisos import exigir_criterio_visible
 
 router = APIRouter(tags=["Catálogo"])
 
@@ -174,14 +175,14 @@ def obtener_version_catalogo(versionId: uuid.UUID, db: DB):
     return _version_a_esquema(db, v)
 
 
-def _criterio_a_esquema(db, criterio: Criterio) -> e.Criterio:
+def _criterio_a_esquema(db, criterio: Criterio, ver_marcas: bool) -> e.Criterio:
     sub = db.get(Subestandar, criterio.subestandar_id)
     est = db.get(Estandar, sub.estandar_id)
     marcas = {
         m.tipo_pi: m.marca
         for m in db.scalars(select(MarcaPorTipo).where(MarcaPorTipo.criterio_id == criterio.id))
     }
-    # Sin autenticación toda consulta se trata como de Coordinación AMPIP, que ve las cuatro marcas.
+    # Solo Coordinación AMPIP (y Director General) ven las cuatro marcas; a la APPI y al consultor se les omiten.
     return e.Criterio(
         id=criterio.id,
         version_catalogo_id=est.version_catalogo_id,
@@ -192,16 +193,17 @@ def _criterio_a_esquema(db, criterio: Criterio) -> e.Criterio:
         metodo_verificacion=criterio.metodo_verificacion,
         categoria_evidencia=criterio.categoria_evidencia,
         evidencia_suficiente=criterio.evidencia_suficiente,
-        marcas=e.MarcasPorTipo(**marcas) if len(marcas) == 4 else None,
+        marcas=e.MarcasPorTipo(**marcas) if ver_marcas and len(marcas) == 4 else None,
     )
 
 
 @router.get("/criterios/{criterioId}", response_model=e.Criterio, response_model_exclude_none=False)
-def obtener_criterio(criterioId: uuid.UUID, db: DB):
+def obtener_criterio(criterioId: uuid.UUID, db: DB, actor: Actor, request: Request):
     criterio = db.get(Criterio, criterioId)
     if criterio is None:
         raise no_encontrado("criterio")
-    return _criterio_a_esquema(db, criterio)
+    ver_marcas = exigir_criterio_visible(db, request, actor, criterio)
+    return _criterio_a_esquema(db, criterio, ver_marcas)
 
 
 @router.patch("/criterios/{criterioId}", response_model=e.Criterio)
@@ -222,4 +224,4 @@ def actualizar_criterio(criterioId: uuid.UUID, cuerpo: e.CriterioUpdate, db: DB,
     criterio.evidencia_suficiente = cuerpo.evidencia_suficiente
     registrar_bitacora(db, actor, "definir_evidencia_suficiente", recurso_tipo="criterio", recurso_id=criterio.id)
     db.commit()
-    return _criterio_a_esquema(db, criterio)
+    return _criterio_a_esquema(db, criterio, ver_marcas=True)

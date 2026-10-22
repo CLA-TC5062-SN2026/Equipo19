@@ -7,15 +7,14 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, Query, Request
-from sqlalchemy import func, select
+from fastapi import Depends, Query
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
 from app.errores import ErrorAPI
 from app.modelos import RegistroBitacora, Usuario
-from app.seguridad import Credenciales, sesion_invalida, validar_token
+from app.seguridad import UsuarioAutenticado
 
 ZONA = ZoneInfo(get_settings().zona_horaria)
 
@@ -37,41 +36,9 @@ def mas_un_anio(d: date) -> date:
 
 
 # ------------------------------------------------------------------ usuario que registra
-def _usuario_sistema(db: Session) -> Usuario:
-    s = get_settings()
-    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.correo) == s.usuario_sistema_correo.lower()))
-    if usuario is None:
-        usuario = Usuario(
-            nombre=s.usuario_sistema_nombre,
-            correo=s.usuario_sistema_correo.lower(),
-            rol="administrador_tecnico",
-            estado="pendiente_activacion",
-        )
-        db.add(usuario)
-        db.commit()
-    return usuario
-
-
-def usuario_actual(request: Request, cred: Credenciales, db: Annotated[Session, Depends(get_db)]) -> Usuario:
-    """Usuario al que se atribuyen las escrituras (registradoPor, cargadoPor, cerradaPor, bitácora...).
-
-    Con `Authorization: Bearer <token>` es el usuario autenticado; un token inválido, vencido o de una sesión
-    revocada responde 401 aunque la ruta todavía no exija autenticación.
-
-    TRANSITORIO (S05-S06-A2): las rutas CRUD aún no están protegidas, así que una solicitud SIN encabezado
-    Authorization se atribuye al usuario técnico USUARIO_SISTEMA_CORREO (estado pendiente_activacion, no puede
-    iniciar sesión). Cuando se protejan las rutas, `Actor` pasa a ser `seguridad.UsuarioAutenticado` y esta rama
-    se elimina.
-    """
-    if cred is not None:
-        return validar_token(db, cred.credentials).usuario
-    if request.headers.get("authorization"):
-        # Encabezado presente pero sin esquema Bearer o vacío: no se degrada en silencio al usuario técnico.
-        raise sesion_invalida()
-    return _usuario_sistema(db)
-
-
-Actor = Annotated[Usuario, Depends(usuario_actual)]
+# Usuario al que se atribuyen las escrituras (registradoPor, cargadoPor, cerradaPor, bitácora...): siempre el
+# usuario autenticado. Sin token válido la solicitud ya respondió 401 en `permisos.autorizar`.
+Actor = UsuarioAutenticado
 DB = Annotated[Session, Depends(get_db)]
 
 

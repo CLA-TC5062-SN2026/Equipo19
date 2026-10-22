@@ -11,6 +11,7 @@ from app import esquemas as e
 from app.comun import DB, Actor, Paginacion, ahora, hoy, mas_un_anio, ordenar_lista, paginar, registrar_bitacora
 from app.errores import ErrorAPI
 from app.modelos import ActualizacionAnual, ClasificacionTipoPI, CriterioParque, Expediente, Generacion, Parque
+from app.permisos import parques_visibles
 from app.servicios import (
     calcular_cumplimiento,
     clasificacion_a_esquema,
@@ -29,6 +30,7 @@ router = APIRouter(tags=["Parques"])
 @router.get("/parques", response_model=e.Pagina[e.Parque])
 def listar_parques(
     db: DB,
+    actor: Actor,
     p: Paginacion,
     generacion_id: Annotated[uuid.UUID | None, Query(alias="generacionId")] = None,
     region: Annotated[e.Region | None, Query()] = None,
@@ -36,6 +38,11 @@ def listar_parques(
     atrasado: Annotated[bool | None, Query()] = None,
 ):
     q = select(Parque)
+    # Coordinación y Director General ven todos; la APPI, su parque; el consultor, sus asignaciones vigentes; el
+    # gerente corporativo, los de su desarrollador (contrato GET /parques, RNF-01).
+    visibles = parques_visibles(db, actor)
+    if visibles is not None:
+        q = q.where(Parque.id.in_(visibles))
     if region:
         q = q.where(Parque.region == region)
     q = q.where(Parque.estado == estado) if estado else q.where(Parque.estado != "inactivo")

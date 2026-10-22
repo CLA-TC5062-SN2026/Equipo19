@@ -48,6 +48,7 @@ uv run pytest
 | `app/esquemas.py` | Request y response en camelCase |
 | `app/errores.py` | Handlers globales: todo error sale como `{codigo, mensaje, detalles}` |
 | `app/seguridad.py` | bcrypt, emisión y validación del JWT y de la sesión, dependencias de autenticación |
+| `app/permisos.py` | Mapa de permisos por rol y parque, dependencia `autorizar` (403 + bitácora) |
 | `app/comun.py` | Usuario que registra, fechas en CDMX, paginación, orden, bitácora |
 | `app/servicios.py` | Expediente vigente, tipo de PI, criterios aplicables, cumplimiento |
 | `app/routers/` | Un router por grupo de recursos del contrato |
@@ -56,7 +57,8 @@ uv run pytest
 
 La revisión del equipo sobre el código que generó el agente está en `../S05_S06_A1/revision_sql.md`, sección 3.
 
-- **Quién registra.** Con `Authorization: Bearer` el actor es el usuario autenticado (token inválido: 401). Sin encabezado, mientras las rutas CRUD no exijan token, los campos `registradoPor`, `cargadoPor`, `cambiadoPor`, `cerradaPor`, `actualizadoPor` y el `usuario_id` de la bitácora se llenan con un usuario técnico (`USUARIO_SISTEMA_CORREO`, rol `administrador_tecnico`, estado `pendiente_activacion`) que se crea solo la primera vez que hace falta. Todo pasa por la dependencia `usuario_actual` de `app/comun.py`; al proteger las rutas se elimina la rama sin token.
+- **Autenticación y permisos.** Todas las rutas salvo `/salud`, `/auth/login` y `/auth/register` exigen `Authorization: Bearer` (401 sin token válido). El mapa ruta -> perfiles autorizados está en `app/permisos.py` (`PERMISOS`); la dependencia `autorizar` lo aplica a cada router protegido, lee rol, parque, desarrollador y asignaciones de la base, responde 403 con el schema `Error` y registra el intento en la bitácora con resultado `denegado`. Si una ruta protegida no tiene entrada en el mapa, la API no arranca. El actor de las escrituras (`registradoPor`, `cargadoPor`, bitácora...) es siempre el usuario autenticado.
+- **Semilla.** `app/semilla.py` inicia sesión con una cuenta activa de Coordinación AMPIP (`SEMILLA_CORREO`, `SEMILLA_CONTRASENA`).
 - **CSV del catálogo.** El archivo no trae clave, categoría de evidencia ni nombres de estándar. La clave se arma como `subestandar.n` (consecutivo dentro del subestándar), la categoría queda en `seguridad` y los nombres como "Estándar N" / "Subestándar N.M".
 - **Parques históricos.** No tienen expediente; sus subrecursos (criterios, fases, plan, etc.) responden 404 `sin_expediente`.
 - **Atrasos.** Mientras no exista el worker, `atrasado` se calcula al consultar (fecha comprometida vencida y criterio no cumplido) además de la marca `fecha_marca_atraso`.

@@ -17,11 +17,6 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr | None = None
     jwt_expiration: int | None = Field(default=None, ge=60, le=86400)
 
-    # Transitorio hasta que las rutas CRUD exijan token: las escrituras hechas SIN encabezado Authorization
-    # se atribuyen a este usuario técnico, que se crea solo la primera vez que se necesita.
-    usuario_sistema_correo: str = "sistema@sgpis.local"
-    usuario_sistema_nombre: str = "Usuario de sistema (sin autenticación)"
-
     # Invitación de alta de usuario (RF-03-AC-1).
     invitacion_vigencia_horas: int = 72
     url_spa: str = "http://localhost:5173"
