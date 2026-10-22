@@ -28,7 +28,7 @@ def test_RF_04_AC_2_autoevaluar_criterio_na(cliente):
     pid = e["parque"]["id"]
     with psycopg.connect(ADMIN_URL.rsplit("/", 1)[0] + "/" + PRUEBA) as c:
         na = c.execute("SELECT c.id FROM criterio c WHERE c.texto LIKE '%cámara en cada caseta%'").fetchone()[0]
-    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{na}", json={"respuesta": "cumple"})
+    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{na}", json={"respuesta": "cumple"}, headers=e["h_appi"])
     assert r.status_code == 422 and r.json()["mensaje"] == "Este criterio no aplica al tipo de PI del parque"
 
 
@@ -36,9 +36,9 @@ def test_autoevaluacion_upsert_201_luego_200(cliente):
     e = escenario(cliente)
     pid = e["parque"]["id"]
     crit = criterio_por_texto(cliente, pid, "barreras físicas")["criterioId"]
-    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{crit}", json={"respuesta": "cumple_parcial"})
+    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{crit}", json={"respuesta": "cumple_parcial"}, headers=e["h_appi"])
     assert r.status_code == 201
-    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{crit}", json={"respuesta": "cumple", "comentario": "Listo"})
+    r = cliente.put(f"/api/parques/{pid}/autoevaluaciones/{crit}", json={"respuesta": "cumple", "comentario": "Listo"}, headers=e["h_appi"])
     assert r.status_code == 200 and r.json()["respuesta"] == "cumple"
     assert cliente.get(f"/api/parques/{pid}/autoevaluaciones").json()["total"] == 1
     assert cliente.get(f"/api/parques/{pid}/autoevaluaciones/{crit}").json()["comentario"] == "Listo"
@@ -65,13 +65,13 @@ def test_RF_09_AC_1_AC_4_plan_de_trabajo(cliente):
     pid = e["parque"]["id"]
     crit = criterio_por_texto(cliente, pid, "barreras físicas")["criterioId"]
     r = cliente.post(f"/api/parques/{pid}/plan-trabajo", json={"criterioId": crit, "responsableId": e["appi"]["id"],
-                                                               "fechaComprometida": "2027-04-15"})
+                                                               "fechaComprometida": "2027-04-15"}, headers=e["h_consultor"])
     assert r.status_code == 201, r.text
     renglon = r.json()
     assert cliente.get(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}").status_code == 200
     assert cliente.get(f"/api/parques/{pid}/plan-trabajo").json()["total"] == 1
     r = cliente.post(f"/api/parques/{pid}/plan-trabajo", json={"criterioId": crit, "responsableId": e["appi"]["id"],
-                                                               "fechaComprometida": "2027-04-15"})
+                                                               "fechaComprometida": "2027-04-15"}, headers=e["h_consultor"])
     assert r.status_code == 409
     otro_parque = cliente.post("/api/parques", json={"tipoRegistro": "activo", "nombre": "Parque Y", "desarrollador": "D",
                                                      "tipoPI": "construccion_cerrado", "region": "MX-JAL",
@@ -79,11 +79,11 @@ def test_RF_09_AC_1_AC_4_plan_de_trabajo(cliente):
     appi_y = crear_usuario(cliente, "appi@parquey.mx", "appi", parqueId=otro_parque["id"])
     crit2 = criterio_por_texto(cliente, pid, "alumbrado")["criterioId"]
     r = cliente.post(f"/api/parques/{pid}/plan-trabajo", json={"criterioId": crit2, "responsableId": appi_y["id"],
-                                                               "fechaComprometida": "2027-04-15"})
+                                                               "fechaComprometida": "2027-04-15"}, headers=e["h_consultor"])
     assert r.status_code == 422 and r.json()["mensaje"] == "El responsable debe ser un usuario APPI de este parque"
-    r = cliente.patch(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}", json={"fechaComprometida": "2027-05-01"})
+    r = cliente.patch(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}", json={"fechaComprometida": "2027-05-01"}, headers=e["h_consultor"])
     assert r.status_code == 200 and r.json()["fechaComprometida"] == "2027-05-01"
-    assert cliente.delete(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}").status_code == 204
+    assert cliente.delete(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}", headers=e["h_consultor"]).status_code == 204
     assert cliente.get(f"/api/parques/{pid}/plan-trabajo/{renglon['id']}").status_code == 404
 
 
@@ -92,7 +92,7 @@ def test_RF_09_AC_2_atraso_en_listado(cliente):
     pid = e["parque"]["id"]
     crit = criterio_por_texto(cliente, pid, "barreras físicas")["criterioId"]
     cliente.post(f"/api/parques/{pid}/plan-trabajo", json={"criterioId": crit, "responsableId": e["appi"]["id"],
-                                                           "fechaComprometida": "2020-01-01"})
+                                                           "fechaComprometida": "2020-01-01"}, headers=e["h_consultor"])
     atrasados = cliente.get(f"/api/parques/{pid}/criterios", params={"atrasado": "true"}).json()["items"]
     assert [a["criterioId"] for a in atrasados] == [crit]
 
@@ -101,15 +101,17 @@ def test_RF_16_AC_1_revision_analisis_riesgos(cliente):
     e = escenario(cliente)
     pid = e["parque"]["id"]
     cuerpo = {"fechaRevision": "2027-03-10", "version": "1.0", "firmante": "María López", "resumen": "12 riesgos"}
-    r = cliente.post(f"/api/parques/{pid}/revisiones-analisis-riesgos", json=cuerpo)
+    r = cliente.post(f"/api/parques/{pid}/revisiones-analisis-riesgos", json=cuerpo, headers=e["h_consultor"])
     assert r.status_code == 201 and r.json()["vigente"] is True
     primera = r.json()
     r = cliente.post(f"/api/parques/{pid}/revisiones-analisis-riesgos", json={**cuerpo, "version": "2.0",
-                                                                             "fechaRevision": "2027-05-10"})
+                                                                             "fechaRevision": "2027-05-10"}, headers=e["h_consultor"])
     assert r.status_code == 201
-    lista = {x["id"]: x for x in cliente.get(f"/api/parques/{pid}/revisiones-analisis-riesgos").json()}
+    lista = {x["id"]: x for x in cliente.get(f"/api/parques/{pid}/revisiones-analisis-riesgos", headers=e["h_appi"]).json()}
     assert lista[primera["id"]]["vigente"] is False and lista[r.json()["id"]]["vigente"] is True
-    assert cliente.get(f"/api/parques/{pid}/revisiones-analisis-riesgos/{primera['id']}").status_code == 200
+    assert cliente.get(f"/api/parques/{pid}/revisiones-analisis-riesgos/{primera['id']}", headers=e["h_consultor"]).status_code == 200
+    # RF-16-AC-1: visible solo para la APPI y el consultor asignado; Coordinación recibe 403.
+    assert cliente.get(f"/api/parques/{pid}/revisiones-analisis-riesgos").status_code == 403
 
 
 def test_parque_historico_sin_subrecursos(cliente):
@@ -124,5 +126,5 @@ def test_plan_de_trabajo_no_admite_criterio_cumplido(cliente):
     crit = criterio_por_texto(cliente, pid, "barreras físicas")["criterioId"]
     _sql("UPDATE criterio_parque SET estado_calificacion='cumplido' WHERE criterio_id = %s", crit)
     r = cliente.post(f"/api/parques/{pid}/plan-trabajo", json={"criterioId": crit, "responsableId": e["appi"]["id"],
-                                                               "fechaComprometida": "2027-04-15"})
+                                                               "fechaComprometida": "2027-04-15"}, headers=e["h_consultor"])
     assert r.status_code == 409 and r.json()["codigo"] == "criterio_cumplido"

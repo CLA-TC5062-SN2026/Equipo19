@@ -67,6 +67,10 @@ LECTURA_EXPEDIENTE = frozenset({
     COORDINACION, DIRECTOR, APPI_DEL_PARQUE, CONSULTOR_ASIGNADO, CONSULTOR_COMITE, GERENTE_DEL_DESARROLLADOR,
 })
 LECTURA_PROGRAMA = frozenset({COORDINACION, DIRECTOR, APPI, CONSULTOR, GERENTE})
+# [P-01] El gerente corporativo solo consulta el avance de sus parques (2.3 y RF-23 del SRS de equipo): ficha del
+# parque, cumplimiento y fases. El v0 le abría todo el expediente (autoevaluaciones con comentarios, plan de trabajo
+# con responsables, asignaciones, historial), que es más de lo que el SRS le da.
+LECTURA_DETALLE = LECTURA_EXPEDIENTE - {GERENTE_DEL_DESARROLLADOR}
 
 # ------------------------------------------------------------------ mapa de permisos
 # Llave: (método, plantilla de la ruta sin el prefijo /api), igual que en openapi_equipo.yaml.
@@ -90,10 +94,10 @@ PERMISOS: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/parques/{parqueId}"): LECTURA_EXPEDIENTE,
     ("PATCH", "/parques/{parqueId}"): SOLO_COORDINACION,
     ("PUT", "/parques/{parqueId}/tipo-pi"): SOLO_COORDINACION,
-    ("GET", "/parques/{parqueId}/tipos-pi"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/tipos-pi"): LECTURA_DETALLE,
     ("POST", "/parques/{parqueId}/actualizaciones-anuales"): SOLO_COORDINACION,
-    ("GET", "/parques/{parqueId}/actualizaciones-anuales/{actualizacionId}"): LECTURA_EXPEDIENTE,
-    ("GET", "/parques/{parqueId}/historial"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/actualizaciones-anuales/{actualizacionId}"): LECTURA_DETALLE,
+    ("GET", "/parques/{parqueId}/historial"): LECTURA_DETALLE,
     # Usuarios (RF-03, RF-29, RF-34)
     ("GET", "/usuarios"): SOLO_COORDINACION,
     ("POST", "/usuarios"): SOLO_COORDINACION,
@@ -102,20 +106,20 @@ PERMISOS: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/parques/{parqueId}/usuarios"): SOLO_COORDINACION,
     ("PUT", "/parques/{parqueId}/contacto-principal"): SOLO_COORDINACION,
     # Asignaciones (RF-10)
-    ("GET", "/parques/{parqueId}/asignaciones-consultor"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/asignaciones-consultor"): LECTURA_DETALLE,
     ("POST", "/parques/{parqueId}/asignaciones-consultor"): SOLO_COORDINACION,
-    ("GET", "/parques/{parqueId}/asignaciones-consultor/{asignacionId}"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/asignaciones-consultor/{asignacionId}"): LECTURA_DETALLE,
     # Criterios del parque, autoevaluación y cumplimiento (RF-04, RF-07, RF-08)
-    ("GET", "/parques/{parqueId}/criterios"): LECTURA_EXPEDIENTE,
-    ("GET", "/parques/{parqueId}/criterios/{criterioId}"): LECTURA_EXPEDIENTE,
-    ("GET", "/parques/{parqueId}/autoevaluaciones"): LECTURA_EXPEDIENTE,
-    ("GET", "/parques/{parqueId}/autoevaluaciones/{criterioId}"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/criterios"): LECTURA_DETALLE,
+    ("GET", "/parques/{parqueId}/criterios/{criterioId}"): LECTURA_DETALLE,
+    ("GET", "/parques/{parqueId}/autoevaluaciones"): LECTURA_DETALLE,
+    ("GET", "/parques/{parqueId}/autoevaluaciones/{criterioId}"): LECTURA_DETALLE,
     ("PUT", "/parques/{parqueId}/autoevaluaciones/{criterioId}"): frozenset({APPI_DEL_PARQUE}),
     ("GET", "/parques/{parqueId}/cumplimiento"): LECTURA_EXPEDIENTE,
     # Plan de trabajo (RF-09)
-    ("GET", "/parques/{parqueId}/plan-trabajo"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/plan-trabajo"): LECTURA_DETALLE,
     ("POST", "/parques/{parqueId}/plan-trabajo"): frozenset({CONSULTOR_ASIGNADO}),
-    ("GET", "/parques/{parqueId}/plan-trabajo/{renglonId}"): LECTURA_EXPEDIENTE,
+    ("GET", "/parques/{parqueId}/plan-trabajo/{renglonId}"): LECTURA_DETALLE,
     ("PATCH", "/parques/{parqueId}/plan-trabajo/{renglonId}"): frozenset({CONSULTOR_ASIGNADO}),
     ("DELETE", "/parques/{parqueId}/plan-trabajo/{renglonId}"): frozenset({CONSULTOR_ASIGNADO}),
     # Análisis de riesgos (RF-16, RNF-02): ni Coordinación ni consultor de comité.

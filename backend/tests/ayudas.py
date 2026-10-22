@@ -40,14 +40,22 @@ def crear_usuario(c, correo, rol, **extra):
     return r.json()
 
 
-def escenario(c):
-    """Catálogo, generación 2027 y Parque X (construcción cerrado) con una APPI y un consultor."""
+def escenario(c, asignar=True):
+    """Catálogo, generación 2027 y Parque X (construcción cerrado) con una APPI y un consultor, ambos invitados y
+    activados, el consultor asignado al parque, y el token de cada uno."""
     v = cargar_catalogo(c)
     g = crear_generacion(c, v["id"])
     p = crear_parque(c, g["id"])
     appi = crear_usuario(c, "gerente@parquex.mx", "appi", parqueId=p["id"])
     consultor = crear_usuario(c, "juan.perez@consultores.mx", "consultor")
-    return {"version": v, "generacion": g, "parque": p, "appi": appi, "consultor": consultor}
+    activar(appi["id"])
+    activar(consultor["id"])
+    if asignar:
+        r = c.post(f"/api/parques/{p['id']}/asignaciones-consultor", json={"consultorId": consultor["id"]})
+        assert r.status_code == 201, r.text
+    return {"version": v, "generacion": g, "parque": p, "appi": appi, "consultor": consultor,
+            "h_appi": bearer(iniciar_sesion(c, appi["correo"])),
+            "h_consultor": bearer(iniciar_sesion(c, consultor["correo"]))}
 
 
 def criterio_por_texto(c, parque_id, fragmento):
@@ -102,3 +110,9 @@ def bearer(token):
 
 
 SIN_TOKEN = {"Authorization": ""}
+
+
+def activar(usuario_id, contrasena=CONTRASENA):
+    """Equivale a que el usuario acepte su invitación con POST /auth/register."""
+    h = bcrypt.hashpw(contrasena.encode(), bcrypt.gensalt(rounds=4)).decode()
+    sql("UPDATE usuario SET estado='activo', contrasena_hash=%s WHERE id=%s", h, usuario_id)

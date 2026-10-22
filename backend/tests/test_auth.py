@@ -40,11 +40,11 @@ def test_RF_03_AC_1_register_activa_cuenta_y_no_devuelve_contrasena(cliente):
 def test_register_token_reusado_o_vencido_410_y_contrasena_corta_422(cliente):
     uid = _pendiente(cliente)
     token = invitacion(uid)
+    vencido = invitacion(_pendiente(cliente, "otro@x.mx"), vence_en=timedelta(minutes=-5))
     with sin_token(cliente):
         assert cliente.post("/api/auth/register", json={"tokenInvitacion": token, "contrasena": "corta"}).status_code == 422
         assert cliente.post("/api/auth/register", json={"tokenInvitacion": token, "contrasena": "una-contrasena-larga"}).status_code == 201
         assert cliente.post("/api/auth/register", json={"tokenInvitacion": token, "contrasena": "otra-contrasena-larga"}).status_code == 410
-        vencido = invitacion(_pendiente(cliente, "otro@x.mx"), vence_en=timedelta(minutes=-5))
         assert cliente.post("/api/auth/register", json={"tokenInvitacion": vencido, "contrasena": "una-contrasena-larga"}).status_code == 410
 
 

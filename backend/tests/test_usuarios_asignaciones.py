@@ -13,7 +13,7 @@ def _activar(usuario_id):
 
 
 def test_RF_03_AC_1_alta_pendiente_con_invitacion(cliente):
-    e = escenario(cliente)
+    e = escenario(cliente, asignar=False)
     assert e["appi"]["estado"] == "pendiente_activacion" and e["appi"]["parqueId"] == e["parque"]["id"]
     with psycopg.connect(ADMIN_URL.rsplit("/", 1)[0] + "/" + PRUEBA) as c:
         n = c.execute("SELECT count(*) FROM mensaje_correo WHERE destinatario='gerente@parquex.mx' AND tipo='invitacion'").fetchone()[0]
@@ -54,7 +54,6 @@ def test_listado_y_actualizacion_de_usuario(cliente):
 def test_RF_29_AC_1_baja_de_consultor_cierra_asignaciones(cliente):
     e = escenario(cliente)
     pid = e["parque"]["id"]
-    cliente.post(f"/api/parques/{pid}/asignaciones-consultor", json={"consultorId": e["consultor"]["id"]})
     r = cliente.patch(f"/api/usuarios/{e['consultor']['id']}", json={"estado": "inactivo", "motivo": "Ya no colabora"})
     assert r.status_code == 200 and r.json()["estado"] == "inactivo"
     asignaciones = cliente.get(f"/api/parques/{pid}/asignaciones-consultor").json()
@@ -62,7 +61,7 @@ def test_RF_29_AC_1_baja_de_consultor_cierra_asignaciones(cliente):
 
 
 def test_RF_10_AC_1_AC_2_asignar_y_reasignar(cliente):
-    e = escenario(cliente)
+    e = escenario(cliente, asignar=False)
     pid = e["parque"]["id"]
     r = cliente.post(f"/api/parques/{pid}/asignaciones-consultor", json={"consultorId": e["consultor"]["id"]})
     assert r.status_code == 201 and r.json()["vigente"] is True
@@ -89,9 +88,8 @@ def test_RF_34_AC_1_AC_2_contacto_principal(cliente):
     e = escenario(cliente)
     pid = e["parque"]["id"]
     asistente = crear_usuario(cliente, "asistente@parquex.mx", "appi", parqueId=pid)
-    r = cliente.put(f"/api/parques/{pid}/contacto-principal", json={"usuarioId": e["appi"]["id"]})
+    r = cliente.put(f"/api/parques/{pid}/contacto-principal", json={"usuarioId": asistente["id"]})
     assert r.status_code == 422  # todavía pendiente de activación
-    _activar(e["appi"]["id"])
     _activar(asistente["id"])
     assert cliente.put(f"/api/parques/{pid}/contacto-principal", json={"usuarioId": e["appi"]["id"]}).status_code == 200
     r = cliente.put(f"/api/parques/{pid}/contacto-principal", json={"usuarioId": asistente["id"]})
@@ -104,14 +102,13 @@ def test_RF_34_AC_1_AC_2_contacto_principal(cliente):
 def test_RF_34_AC_3_baja_del_contacto_deja_parque_sin_contacto(cliente):
     e = escenario(cliente)
     pid = e["parque"]["id"]
-    _activar(e["appi"]["id"])
     cliente.put(f"/api/parques/{pid}/contacto-principal", json={"usuarioId": e["appi"]["id"]})
     cliente.patch(f"/api/usuarios/{e['appi']['id']}", json={"estado": "inactivo", "motivo": "Renunció"})
     assert cliente.get(f"/api/parques/{pid}").json()["contactoPrincipalId"] is None
 
 
 def test_no_se_asigna_consultor_a_parque_dado_de_baja(cliente):
-    e = escenario(cliente)
+    e = escenario(cliente, asignar=False)
     pid = e["parque"]["id"]
     cliente.patch(f"/api/parques/{pid}", json={"estado": "inactivo", "motivo": "Salió"})
     r = cliente.post(f"/api/parques/{pid}/asignaciones-consultor", json={"consultorId": e["consultor"]["id"]})
