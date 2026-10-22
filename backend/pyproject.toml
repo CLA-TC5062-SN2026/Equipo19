@@ -1,0 +1,19 @@
+[project]
+name = "sgpis-backend"
+version = "0.1.0"
+description = "API REST de SGPIS (contrato openapi_equipo.yaml v2.0.0), equipo 19"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30,<2.1",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.8,<3",
+    "pydantic-settings>=2.4",
+    "python-multipart>=0.0.9",
+    "tzdata>=2024.1",
+]
+
+[tool.uv]
+package = false
