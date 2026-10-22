@@ -45,6 +45,9 @@ def crear_asignacion_consultor(
     parqueId: uuid.UUID, cuerpo: e.AsignacionConsultorCreate, db: DB, actor: Actor, response: Response
 ):
     parque = obtener_parque(db, parqueId)
+    # [C-06] RF-29-AC-3: un parque dado de baja no recibe consultor; el v0 lo permitía.
+    if parque.estado == "inactivo":
+        raise ErrorAPI(409, "parque_inactivo", "El parque está dado de baja")
     exp = exigir_expediente(db, parque)
     consultor = db.get(Usuario, cuerpo.consultor_id)
     if consultor is None:

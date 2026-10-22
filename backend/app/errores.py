@@ -86,8 +86,11 @@ def _campo(loc: tuple) -> str:
 
 def _traducir(request: Request, errores: list[dict]) -> tuple[str, str] | None:
     ruta = request.scope.get("route")
-    plantilla = getattr(ruta, "path_format", None)
-    tabla = TABLA_VALIDACION.get((request.method, plantilla or ""))
+    plantilla = getattr(ruta, "path_format", None) or ""
+    # [C-02] La ruta guarda la plantilla sin el prefijo /api de include_router; la tabla la usa con prefijo.
+    if not plantilla.startswith("/api/"):
+        plantilla = "/api" + plantilla
+    tabla = TABLA_VALIDACION.get((request.method, plantilla))
     if not tabla:
         return None
     for err in errores:
@@ -140,9 +143,16 @@ def registrar_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(IntegrityError)
     async def _integridad(_: Request, exc: IntegrityError) -> JSONResponse:
+        # [C-05] El v0 respondía 409 a toda violación de integridad. Según las reglas del contrato, solo la
+        # unicidad es conflicto con el estado actual (409); una FK, un CHECK o un NOT NULL violados son datos
+        # que no cumplen una regla (422).
         log.warning("Violación de integridad: %s", exc.orig)
-        codigo, mensaje = _CODIGOS_HTTP[409]
-        return JSONResponse(status_code=409, content=cuerpo_error(codigo, mensaje))
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        if sqlstate == "23505":
+            codigo, mensaje = _CODIGOS_HTTP[409]
+            return JSONResponse(status_code=409, content=cuerpo_error(codigo, mensaje))
+        codigo, mensaje = _CODIGOS_HTTP[422]
+        return JSONResponse(status_code=422, content=cuerpo_error(codigo, mensaje))
 
     @app.exception_handler(Exception)
     async def _no_controlado(_: Request, exc: Exception) -> JSONResponse:

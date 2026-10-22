@@ -209,6 +209,16 @@ def actualizar_criterio(criterioId: uuid.UUID, cuerpo: e.CriterioUpdate, db: DB,
     criterio = db.get(Criterio, criterioId)
     if criterio is None:
         raise no_encontrado("criterio")
+    # [C-01] RF-01-AC-5 / D-09: una versión anterior queda en solo lectura; el v0 la dejaba editar.
+    version = db.scalar(
+        select(VersionCatalogo)
+        .join(Estandar, Estandar.version_catalogo_id == VersionCatalogo.id)
+        .join(Subestandar, Subestandar.estandar_id == Estandar.id)
+        .where(Subestandar.id == criterio.subestandar_id)
+    )
+    if version is not None and version.estado == "solo_lectura":
+        raise ErrorAPI(409, "version_solo_lectura",
+                       f"La versión {version.nombre} del catálogo está en solo lectura")
     criterio.evidencia_suficiente = cuerpo.evidencia_suficiente
     registrar_bitacora(db, actor, "definir_evidencia_suficiente", recurso_tipo="criterio", recurso_id=criterio.id)
     db.commit()

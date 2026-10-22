@@ -1,0 +1,25 @@
+estandar,subestandar,criterio,metodo_verificacion,marca_construccion_abierto,marca_construccion_cerrado,marca_operacion_abierto,marca_operacion_cerrado
+1,1.1,El parque cuenta con un análisis de riesgos firmado por la administración,Revisión documental,O,O,O,O
+1,1.2,Existe una política de seguridad aprobada y difundida,Revisión documental,O,O,O,O
+1,1.3,El parque tiene un plan de contingencia vigente,Revisión documental,O,O,O,O
+1,1.4,Se realizan auditorías internas de seguridad dos veces al año,Revisión de reportes,R,R,O,O
+2,2.3,El perímetro cuenta con barreras físicas continuas,Inspección en sitio,R,O,R,O
+2,2.6,El alumbrado perimetral cubre todo el contorno,Inspección nocturna,R,R,O,O
+2,2.8,Existe al menos una cámara en cada caseta de acceso,Inspección en sitio,NA,NA,O,O
+2,2.8,El grabador conserva video por al menos 30 días,Revisión de configuración,NA,R,O,O
+3,3.1,El reglamento interno incluye el apartado de seguridad,Revisión documental,O,O,O,O
+3,3.4,El reglamento interno define sanciones por incumplimiento,Revisión documental,R,R,O,O
+4,4.1,El personal de seguridad está contratado con empresa registrada en REPSE,Revisión documental,O,O,O,O
+4,4.2,Los guardias tienen capacitación documentada en el último año,Revisión de constancias,R,O,O,O
+5,5.1,Existe control de acceso vehicular con registro,Inspección en sitio,R,O,R,O
+5,5.2,Se registra la entrada y salida de visitantes,Revisión de bitácoras,R,O,R,O
+6,6.1,El parque tiene un procedimiento de comunicación de emergencias,Revisión documental,O,O,O,O
+6,6.2,Hay simulacros de evacuación al menos una vez al año,Revisión de reportes,R,R,O,O
+7,7.1,Los datos personales de visitantes se resguardan con acceso restringido,Revisión documental,O,O,O,O
+7,7.2,Existe un aviso de privacidad visible en accesos,Inspección en sitio,R,R,O,O
+8,8.1,El parque mantiene coordinación con autoridades de seguridad pública,Revisión de minutas,R,R,R,R
+8,8.2,Existe un directorio actualizado de autoridades y servicios de emergencia,Revisión documental,O,O,O,O
+9,9.1,Las vialidades internas tienen señalización de seguridad,Inspección en sitio,R,R,O,O
+9,9.2,Las zonas de carga tienen iluminación y vigilancia,Inspección en sitio,NA,NA,R,O
+10,10.1,La administración da seguimiento a incidentes con indicadores,Revisión de reportes,R,R,O,O
+10,10.2,Los incidentes se registran con fecha y acción correctiva,Revisión de bitácoras,O,O,O,O

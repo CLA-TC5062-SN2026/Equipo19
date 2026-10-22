@@ -93,6 +93,10 @@ def crear_renglon_plan_trabajo(
     fila = filas[0]
     if fila.marca not in ("O", "R"):
         raise ErrorAPI(422, "criterio_no_aplica", "Este criterio no aplica al tipo de PI del parque")
+    # [C-07] RF-09 y el contrato hablan de criterios pendientes; el v0 aceptaba un renglón sobre un criterio ya
+    # cumplido, que nunca podría marcarse atrasado.
+    if fila.cp.estado_calificacion == "cumplido":
+        raise ErrorAPI(409, "criterio_cumplido", "El criterio ya está cumplido; no requiere plan de trabajo")
     responsable = _validar_responsable(db, cuerpo.responsable_id, parque)
     if db.scalar(select(RenglonPlanTrabajo.id).where(RenglonPlanTrabajo.criterio_parque_id == fila.cp.id)):
         raise ErrorAPI(409, "renglon_duplicado", "El criterio ya tiene un renglón en el plan de trabajo del parque")

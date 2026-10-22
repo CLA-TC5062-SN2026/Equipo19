@@ -17,6 +17,7 @@ from app.routers import (
     cumplimiento,
     fases,
     generaciones,
+    historial,
     operacion,
     parques,
     plan_trabajo,
@@ -38,7 +39,7 @@ app = FastAPI(
 registrar_handlers(app)
 
 for modulo in (
-    operacion, catalogo, generaciones, parques, usuarios, asignaciones, criterios_parque,
+    operacion, catalogo, generaciones, parques, historial, usuarios, asignaciones, criterios_parque,
     autoevaluacion, cumplimiento, plan_trabajo, analisis_riesgos, fases, configuracion, bitacora,
 ):
     app.include_router(modulo.router, prefix=PREFIJO)

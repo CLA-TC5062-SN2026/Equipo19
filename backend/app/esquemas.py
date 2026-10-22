@@ -402,3 +402,41 @@ class RegistroBitacora(Esquema):
     recurso_id: str | None = None
     resultado: Literal["exitoso", "denegado", "fallido"]
     detalle: str | None = None
+
+
+# ---------------------------------------------------------------- historial (RF-31) [C-04]
+class OpinionCumplimiento(Esquema):
+    id: uuid.UUID
+    parque_id: uuid.UUID
+    generacion_id: uuid.UUID
+    tipo: Literal["intermedia", "final"]
+    favorable: bool | None
+    porcentaje_obligatorios: float | None
+    porcentaje_avance_general: float | None
+    consultor_id: uuid.UUID
+    fecha: datetime
+    comentarios: str | None = None
+
+
+class Dictamen(Esquema):
+    id: uuid.UUID
+    parque_id: uuid.UUID
+    generacion_id: uuid.UUID
+    sesion_comite_id: uuid.UUID
+    tipo: Literal["otorgar", "no_otorgar"]
+    motivo: str
+    estado: Literal["borrador", "firmado"]
+    capturado_por: uuid.UUID
+    fecha_captura: datetime
+    firmado_por: uuid.UUID | None
+    fecha_firma: datetime | None
+    vigencia_hasta: date | None
+
+
+class HistorialParque(Esquema):
+    parque: Parque
+    generaciones: list[Generacion]
+    actualizaciones_anuales: list[ActualizacionAnual]
+    autoevaluaciones: list[Autoevaluacion]
+    opiniones: list[OpinionCumplimiento]
+    dictamenes: list[Dictamen]
