@@ -1,4 +1,4 @@
-"""Piezas transversales: usuario que registra, fechas en CDMX, paginación, orden y bitácora."""
+"""Piezas transversales: usuario que registra (autenticado), fechas en CDMX, paginación, orden y bitácora."""
 
 import uuid
 from collections.abc import Callable, Sequence
@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.errores import ErrorAPI
 from app.modelos import RegistroBitacora, Usuario
+from app.seguridad import Credenciales, sesion_invalida, validar_token
 
 ZONA = ZoneInfo(get_settings().zona_horaria)
 
@@ -36,13 +37,7 @@ def mas_un_anio(d: date) -> date:
 
 
 # ------------------------------------------------------------------ usuario que registra
-def usuario_actual(db: Annotated[Session, Depends(get_db)]) -> Usuario:
-    """Usuario al que se atribuyen las escrituras (registradoPor, cargadoPor, cerradaPor...).
-
-    Mientras no exista autenticación es un usuario técnico fijo, configurable con
-    USUARIO_SISTEMA_CORREO, que se crea la primera vez que se necesita. En S05-S06-A2 esta
-    dependencia se reemplaza por la que valida el JWT y la sesión, sin tocar los routers.
-    """
+def _usuario_sistema(db: Session) -> Usuario:
     s = get_settings()
     usuario = db.scalar(select(Usuario).where(func.lower(Usuario.correo) == s.usuario_sistema_correo.lower()))
     if usuario is None:
@@ -55,6 +50,25 @@ def usuario_actual(db: Annotated[Session, Depends(get_db)]) -> Usuario:
         db.add(usuario)
         db.commit()
     return usuario
+
+
+def usuario_actual(request: Request, cred: Credenciales, db: Annotated[Session, Depends(get_db)]) -> Usuario:
+    """Usuario al que se atribuyen las escrituras (registradoPor, cargadoPor, cerradaPor, bitácora...).
+
+    Con `Authorization: Bearer <token>` es el usuario autenticado; un token inválido, vencido o de una sesión
+    revocada responde 401 aunque la ruta todavía no exija autenticación.
+
+    TRANSITORIO (S05-S06-A2): las rutas CRUD aún no están protegidas, así que una solicitud SIN encabezado
+    Authorization se atribuye al usuario técnico USUARIO_SISTEMA_CORREO (estado pendiente_activacion, no puede
+    iniciar sesión). Cuando se protejan las rutas, `Actor` pasa a ser `seguridad.UsuarioAutenticado` y esta rama
+    se elimina.
+    """
+    if cred is not None:
+        return validar_token(db, cred.credentials).usuario
+    if request.headers.get("authorization"):
+        # Encabezado presente pero sin esquema Bearer o vacío: no se degrada en silencio al usuario técnico.
+        raise sesion_invalida()
+    return _usuario_sistema(db)
 
 
 Actor = Annotated[Usuario, Depends(usuario_actual)]

@@ -234,6 +234,33 @@ class Usuario(Esquema):
     fecha_alta: datetime
 
 
+# ---------------------------------------------------------------- autenticación
+class RegistroCreate(Esquema):
+    token_invitacion: str = Field(min_length=32)
+    contrasena: str = Field(min_length=10)
+
+
+class SesionCreate(Esquema):
+    correo: str = Field(max_length=254, pattern=PATRON_CORREO)
+    contrasena: str
+
+
+class SesionCreada(Esquema):
+    token: str
+    tipo_token: Literal["Bearer"] = "Bearer"
+    expira_en: datetime
+    expira_por_inactividad_min: int
+    usuario: Usuario
+
+
+class SesionActual(Esquema):
+    sesion_id: uuid.UUID
+    inicio: datetime
+    ultima_actividad: datetime
+    expira_por_inactividad_min: int
+    usuario: Usuario
+
+
 class UsuarioParque(Usuario):
     contacto_principal: bool
 

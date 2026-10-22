@@ -9,6 +9,7 @@ from app.errores import registrar_handlers
 from app.routers import (
     analisis_riesgos,
     asignaciones,
+    autenticacion,
     autoevaluacion,
     bitacora,
     catalogo,
@@ -31,7 +32,10 @@ PREFIJO = "/api"
 app = FastAPI(
     title="SGPIS API (contrato de equipo)",
     version="2.0.0",
-    description="Implementación de openapi_equipo.yaml. Borrador S05-S06-A1: sin autenticación.",
+    description=(
+        "Implementación de openapi_equipo.yaml. S05-S06-A2: autenticación JWT en /auth; las rutas CRUD todavía "
+        "no exigen token ni validan rol."
+    ),
     docs_url=f"{PREFIJO}/docs",
     openapi_url=f"{PREFIJO}/openapi.json",
     redoc_url=None,
@@ -39,7 +43,7 @@ app = FastAPI(
 registrar_handlers(app)
 
 for modulo in (
-    operacion, catalogo, generaciones, parques, historial, usuarios, asignaciones, criterios_parque,
+    autenticacion, operacion, catalogo, generaciones, parques, historial, usuarios, asignaciones, criterios_parque,
     autoevaluacion, cumplimiento, plan_trabajo, analisis_riesgos, fases, configuracion, bitacora,
 ):
     app.include_router(modulo.router, prefix=PREFIJO)

@@ -22,6 +22,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sgpis}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sgpis}
       USUARIO_SISTEMA_CORREO: ${USUARIO_SISTEMA_CORREO:-sistema@sgpis.local}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:?Define JWT_EXPIRATION en .env}
     depends_on:
       db:
         condition: service_healthy

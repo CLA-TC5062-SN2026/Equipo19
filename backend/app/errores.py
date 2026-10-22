@@ -19,12 +19,21 @@ log = logging.getLogger("sgpis.errores")
 class ErrorAPI(Exception):
     """Error de negocio con código de estado, código estable y mensaje para el usuario."""
 
-    def __init__(self, status: int, codigo: str, mensaje: str, detalles: list[dict] | None = None):
+    def __init__(
+        self,
+        status: int,
+        codigo: str,
+        mensaje: str,
+        detalles: list[dict] | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         super().__init__(mensaje)
         self.status = status
         self.codigo = codigo
         self.mensaje = mensaje
         self.detalles = detalles
+        # Cabeceras de la respuesta de error (WWW-Authenticate en 401, Retry-After en 429).
+        self.headers = headers
 
 
 def no_encontrado(recurso: str = "recurso") -> ErrorAPI:
@@ -53,6 +62,9 @@ TABLA_VALIDACION: dict[tuple[str, str], dict[str, object]] = {
         },
     },
     ("PATCH", "/api/parques/{parqueId}"): {"region": _REGION},
+    ("POST", "/api/auth/register"): {
+        "contrasena": ("contrasena_debil", "La contraseña debe tener al menos 10 caracteres"),
+    },
     ("PUT", "/api/parques/{parqueId}/tipo-pi"): {
         "tipoPI": ("tipo_pi_invalido", "Tipo de PI inválido"),
         "motivo": ("motivo_requerido", "Indique el motivo del cambio de tipo de PI"),
@@ -107,7 +119,11 @@ def _traducir(request: Request, errores: list[dict]) -> tuple[str, str] | None:
 def registrar_handlers(app: FastAPI) -> None:
     @app.exception_handler(ErrorAPI)
     async def _error_api(_: Request, exc: ErrorAPI) -> JSONResponse:
-        return JSONResponse(status_code=exc.status, content=cuerpo_error(exc.codigo, exc.mensaje, exc.detalles))
+        return JSONResponse(
+            status_code=exc.status,
+            content=cuerpo_error(exc.codigo, exc.mensaje, exc.detalles),
+            headers=exc.headers,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validacion(request: Request, exc: RequestValidationError) -> JSONResponse:
