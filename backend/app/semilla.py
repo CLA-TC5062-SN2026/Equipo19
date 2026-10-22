@@ -16,12 +16,12 @@ from pathlib import Path
 
 import bcrypt
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.alta_inicial import crear_invitacion
 from app.db import SessionLocal
 from app.main import app
-from app.modelos import Generacion, Parque, Usuario, VersionCatalogo
+from app.modelos import Generacion, Parque, Sesion, Usuario, VersionCatalogo
 
 CSV = Path(__file__).resolve().parents[1] / "datos" / "catalogo_sintetico.csv"
 APPI_DEMO = "appi.demo@parquedemo.mx"
@@ -90,9 +90,14 @@ def main(argv: list[str] | None = None) -> None:
 
     with SessionLocal() as db:
         coord_demo = _usuario(db, COORDINACION_DEMO)
-    if coord_demo is not None and coord_demo.estado != "pendiente_activacion":
-        print(f"{COORDINACION_DEMO} ya está activa; para repetir el registro, recrea la base.")
-        return
+        if coord_demo is not None and coord_demo.estado != "pendiente_activacion":
+            # Otra toma del video: la cuenta demo vuelve a "pendiente de activación", sin contraseña y sin sesiones,
+            # y se emite una invitación nueva. Solo desarrollo.
+            coord_demo.estado, coord_demo.contrasena_hash = "pendiente_activacion", None
+            db.execute(update(Sesion).where(Sesion.usuario_id == coord_demo.id, Sesion.revocada_en.is_(None))
+                       .values(revocada_en=func.now()))
+            db.commit()
+            print(f"{COORDINACION_DEMO} regresó a pendiente de activación para repetir el registro.")
     if coord_demo is None:
         coord_demo_id = _ok(c.post("/api/usuarios", json={"correo": COORDINACION_DEMO, "nombre": "Coordinación demo",
                                                           "rol": "coordinacion_ampip"}))["id"]

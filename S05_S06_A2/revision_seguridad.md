@@ -46,7 +46,7 @@ El registro no es abierto. RF-03 reserva el alta de cuentas a Coordinación AMPI
 
 ### 2.1 Qué rutas quedaron protegidas
 
-El contrato pone `security: [BearerAuth: []]` en todo y lo quita con `security: []` en tres operaciones: `GET /salud`, `POST /auth/login` y `POST /auth/register`. Esas tres siguen públicas. Todo lo demás que está implementado exige token: las 46 operaciones CRUD de S05-S06-A1, más `GET /auth/me` y `POST /auth/logout`.
+El contrato pone `security: [BearerAuth: []]` en todo y lo quita con `security: []` en cinco operaciones: `GET /salud`, `POST /auth/login`, `POST /auth/register` y las dos de recuperación de contraseña (`POST /recuperaciones-contrasena` y `PATCH /recuperaciones-contrasena/{token}`). Las tres primeras están implementadas y siguen públicas; la recuperación de contraseña todavía no se implementa. Todo lo demás que está implementado exige token: las 46 operaciones CRUD de S05-S06-A1, más `GET /auth/me` y `POST /auth/logout`.
 
 Cada router protegido se monta en `main.py` con la dependencia `permisos.autorizar`. Esa dependencia primero valida el token y la sesión (401 si falla) y luego busca la ruta en el mapa `PERMISOS` de `app/permisos.py` (403 si el perfil no aparece). El mapa es la única fuente de permisos. Al arrancar, `verificar_mapa` compara las rutas con el mapa y la API no levanta si una ruta protegida no tiene entrada o si una entrada no corresponde a ninguna ruta.
 
@@ -112,7 +112,7 @@ Cada 403 queda en la bitácora con acción `acceso_denegado`, resultado "denegad
 | ID | Hallazgo en el código del agente | Riesgo | Corrección | Prueba |
 |---|---|---|---|---|
 | P-01 | El gerente corporativo leía todo el expediente de los parques de su desarrollador: criterios, autoevaluaciones con comentarios, plan de trabajo con responsables, asignaciones e historial. | El SRS le da una vista de solo lectura del avance (2.3, RF-23). Los comentarios de autoevaluación y el plan describen huecos de seguridad del parque, que es justo lo que RNF-02 cuida. | El gerente queda con la ficha del parque, el cumplimiento y las fases. El resto del expediente usa el grupo `LECTURA_DETALLE`, que no lo incluye. | `test_P_01_gerente_solo_ve_el_avance_de_sus_parques` |
-| P-02 | Con todo protegido, crear un usuario exige una sesión de Coordinación, y no había manera de crear la primera. El agente lo señaló y dejó la semilla dependiendo de una cuenta que nadie podía crear. | Sin primera cuenta, el sistema no se puede poner en marcha. Crearla con un INSERT a mano en producción dejaría una contraseña en el historial de la terminal. | Comando `python -m app.alta_inicial`: corre en el servidor, crea la cuenta de Coordinación en "pendiente de activación" con su invitación y muestra el token una vez. La contraseña la fija la persona con `POST /auth/register`, igual que cualquier otra cuenta. Queda en la bitácora. | `test_P_02_alta_inicial_de_coordinacion` |
+| P-02 | Con todo protegido, crear un usuario exige una sesión de Coordinación, y no había manera de crear la primera. El agente lo señaló y dejó la semilla dependiendo de una cuenta que nadie podía crear. | Sin primera cuenta, el sistema no se puede poner en marcha. Crearla con un INSERT a mano en producción dejaría una contraseña en el historial de la terminal. | Comando `python -m app.alta_inicial`: corre en el servidor, crea la cuenta de Coordinación en "pendiente de activación" con su invitación y muestra el token una vez. La contraseña la fija la persona con `POST /auth/register`, igual que cualquier otra cuenta. Queda en la bitácora. La semilla de desarrollo (`app/semilla.py`) sí crea su cuenta de Coordinación directo en la base, con la contraseña de `.env`; es solo para entornos locales y no sustituye a este comando. | `test_P_02_alta_inicial_de_coordinacion` |
 
 ### 2.3 Decisiones del agente que aceptamos
 
@@ -138,7 +138,7 @@ El consultor asignado registra el plan de trabajo y tiene que elegir como respon
 | Aislamiento (RNF-01) | `GET /api/parques/{otro}` con el token de la APPI | 403 | 403 `sin_permiso` |
 | Bitácora (RF-35-AC-2) | `GET /api/bitacora?accion=acceso_denegado` con Coordinación | Los dos 403 registrados | 200, dos registros "denegado" con usuario, rol y ruta |
 
-Las mismas reglas están automatizadas en `test_permisos.py`. Una prueba recorre las 48 rutas protegidas y exige 401 sin token y con token alterado. Otras cubren el 403 por rol, el aislamiento entre parques, la pérdida de acceso al reasignar consultor, la autoevaluación solo para la APPI, las revisiones de análisis de riesgos ocultas a Coordinación, la bitácora solo para Coordinación y el registro del 403. La suite completa del backend tiene 79 pruebas y todas pasan.
+Las mismas reglas están automatizadas en `test_permisos.py`. Una prueba recorre las 48 rutas protegidas y exige 401 sin token y con token alterado. Otras cubren el 403 por rol, el aislamiento entre parques, la pérdida de acceso al reasignar consultor, la autoevaluación solo para la APPI, las revisiones de análisis de riesgos ocultas a Coordinación, la bitácora solo para Coordinación y el registro del 403. La suite completa del backend tiene 80 pruebas y todas pasan.
 
 ## 3. Video
 

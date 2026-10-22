@@ -2,7 +2,7 @@
 
 **Equipo:** 19 (Ángel Kociankowski, Leonardo Cossío, Erick Ramírez)
 **Actividad:** S05-S06-A1, Parte 0
-**Insumos:** `SRS_equipo.md` v2.0, ADR-001 y diagramas de S04_A1 (Ángel), `sprint1_planning.md` y `tareas_tecnicas.md` (S03_A2), `openapi_equipo.yaml`
+**Insumos:** `../S03_A1/SRS_equipo.md` v2.0, ADR-001 y diagramas de S04_A1 (Ángel), `../S03_A2/sprint1_planning.md` y `../S03_A2/tareas_tecnicas.md`, `openapi_equipo.yaml`
 **Diferencias con los diseños individuales:** `diferencias_diseno.md`, sección 4
 
 ## Decisión

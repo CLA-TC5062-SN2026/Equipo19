@@ -64,7 +64,7 @@ esq["BearerAuth"] = bearer
 for p in ["/sesiones", "/sesiones/actual", "/invitaciones/{token}"]:
     del paths[p]
 
-# --- D-05: evidencia vinculada a varios criterios; estado por vínculo (C-19, RF-05-AC-5 a AC-10) ---
+# --- D-03: evidencia vinculada a varios criterios; estado por vínculo (C-19, RF-05-AC-5 a AC-10) ---
 del paths["/parques/{parqueId}/criterios/{criterioId}/evidencias"]["post"]
 paths["/parques/{parqueId}/criterios/{criterioId}/evidencias"]["get"]["description"] = (
     "Evidencias vinculadas al criterio, cada una con el estado de su vínculo con este criterio. No incluye las\n"
@@ -124,11 +124,11 @@ for k in ["EvidenciaUpdate", "InvitacionUpdate"]:
     del S[k]
 S["EstadoEvidencia"]["description"] = "Alias histórico de EstadoVinculo para el filtro `estado` de los listados."
 
-# --- D-06: límite de archivo configurable (C-05, RF-06-AC-6/AC-7) y vigencia del distintivo (C-10) ---
+# --- D-04: límite de archivo configurable (C-05, RF-06-AC-6/AC-7) y vigencia del distintivo (C-10) ---
 paths["/configuracion"] = nuevos_paths["/configuracion"]
 d["components"]["responses"]["PayloadTooLarge"]["description"] = "El archivo supera el límite configurado de tamaño."
 
-# --- D-07: tres cifras de cumplimiento (C-11, RF-08-AC-4/AC-5) ---
+# --- D-05: tres cifras de cumplimiento (C-11, RF-08-AC-4/AC-5) ---
 cif = S["CifrasCumplimiento"]
 cif["required"].append("porcentajeRecomendados")
 cif["properties"]["porcentajeRecomendados"] = cargar(io.StringIO(
@@ -137,7 +137,7 @@ cif["properties"]["porcentajeRecomendados"] = cargar(io.StringIO(
 cif["description"] = "Los globales se calculan sumando criterios de los 10 estándares, nunca promediando porcentajes."
 agregar_ac(paths["/parques/{parqueId}/cumplimiento"]["get"], "RF-08-AC-4", "RF-08-AC-5")
 
-# --- D-08: motivo obligatorio en cambio de tipo de PI (C-04, RF-11-AC-5/AC-6) ---
+# --- D-06: motivo obligatorio en cambio de tipo de PI (C-04, RF-11-AC-5/AC-6) ---
 S["CambioTipoPI"]["required"].append("motivo")
 S["CambioTipoPI"]["properties"]["motivo"] = cargar(io.StringIO("type: string\nminLength: 1\n"))
 cls = S["ClasificacionTipoPI"]["properties"]
@@ -149,7 +149,7 @@ tp["description"] = str(tp["description"]) + (
     "\nSin `motivo` responde 422 `motivo_requerido`: \"Indique el motivo del cambio de tipo de PI\". Las evidencias de\n"
     "criterios que pasan a NA se conservan con su estado e historial y dejan de contar en el cálculo (RF-11-AC-6).\n")
 
-# --- D-09: versiones anteriores del catálogo en solo lectura (C-14, RF-01-AC-5) ---
+# --- D-07: versiones anteriores del catálogo en solo lectura (C-14, RF-01-AC-5) ---
 vc = S["VersionCatalogo"]
 vc["required"].append("estado")
 vc["properties"]["estado"] = cargar(io.StringIO(
@@ -162,7 +162,7 @@ agregar_ac(pc, "RF-01-AC-5")
 if "409" not in pc["responses"]:
     pc["responses"]["409"] = CommentedMap([("$ref", "#/components/responses/Conflict")])
 
-# --- D-10 a D-14: RF nuevos del SRS de equipo (RF-32 a RF-36) ---
+# --- D-08 a D-12: RF nuevos del SRS de equipo (RF-32 a RF-36) ---
 for p in ["/parques/{parqueId}/fases", "/parques/{parqueId}/fases/{fase}/cierre", "/parques/{parqueId}/avances-fase",
           "/parques/{parqueId}/evaluaciones-desempeno", "/parques/{parqueId}/usuarios",
           "/parques/{parqueId}/contacto-principal", "/bitacora",

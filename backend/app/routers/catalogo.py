@@ -211,7 +211,7 @@ def actualizar_criterio(criterioId: uuid.UUID, cuerpo: e.CriterioUpdate, db: DB,
     criterio = db.get(Criterio, criterioId)
     if criterio is None:
         raise no_encontrado("criterio")
-    # [C-01] RF-01-AC-5 / D-09: una versión anterior queda en solo lectura; el v0 la dejaba editar.
+    # [C-01] RF-01-AC-5 / D-07: una versión anterior queda en solo lectura; el v0 la dejaba editar.
     version = db.scalar(
         select(VersionCatalogo)
         .join(Estandar, Estandar.version_catalogo_id == VersionCatalogo.id)
