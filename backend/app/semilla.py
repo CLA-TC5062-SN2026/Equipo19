@@ -10,6 +10,7 @@ no el de AMPIP.
 """
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
@@ -47,6 +48,7 @@ def _ok(r):
 
 
 def main(argv: list[str] | None = None) -> None:
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     p = argparse.ArgumentParser(description="Datos de arranque locales")
     p.add_argument("--demo", action="store_true")
     args = p.parse_args(argv)

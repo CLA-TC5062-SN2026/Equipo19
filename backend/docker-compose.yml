@@ -19,6 +19,8 @@ services:
 
   api:
     build: .
+    # Pasa también las variables de la semilla (solo desarrollo); las de `environment` tienen prioridad.
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sgpis}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sgpis}
       JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
