@@ -449,7 +449,7 @@ class Dictamen(Esquema):
     id: uuid.UUID
     parque_id: uuid.UUID
     generacion_id: uuid.UUID
-    sesion_comite_id: uuid.UUID
+    sesion_comite_id: uuid.UUID | None
     tipo: Literal["otorgar", "no_otorgar"]
     motivo: str
     estado: Literal["borrador", "firmado"]

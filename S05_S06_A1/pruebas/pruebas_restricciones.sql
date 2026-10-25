@@ -41,5 +41,21 @@ UPDATE registro_bitacora SET accion='x';
 INSERT INTO intento_login (correo) VALUES ('Appi@X.mx');
 \echo '--- correo duplicado sin distinguir mayúsculas (debe fallar)'
 INSERT INTO usuario (nombre,correo,rol) VALUES ('Dup','COORD@ampip.mx','coordinacion_ampip');
+\echo '--- D-17 dictamen "no otorgar" sin sesión de comité (RF-14-AC-8, debe pasar)'
+INSERT INTO dictamen (expediente_id,tipo,motivo,capturado_por) VALUES ('00000000-0000-0000-0000-000000000201','no_otorgar','60 % de obligatorios','00000000-0000-0000-0000-000000000001');
+\echo '--- D-17 segundo dictamen en el mismo expediente (debe fallar)'
+INSERT INTO dictamen (expediente_id,tipo,motivo,capturado_por) VALUES ('00000000-0000-0000-0000-000000000201','no_otorgar','otro','00000000-0000-0000-0000-000000000001');
+\echo '--- D-17 dictamen con la sesión de comité de otro expediente (debe fallar)'
+INSERT INTO usuario (id,nombre,correo,rol) VALUES ('00000000-0000-0000-0000-000000000021','Ana Ruiz','ana@consultores.mx','consultor');
+INSERT INTO sesion_comite (id,expediente_id,consultor_comite_id) VALUES ('00000000-0000-0000-0000-000000000501','00000000-0000-0000-0000-000000000201','00000000-0000-0000-0000-000000000021');
+INSERT INTO dictamen (expediente_id,sesion_comite_id,tipo,motivo,capturado_por) VALUES ('00000000-0000-0000-0000-000000000202','00000000-0000-0000-0000-000000000501','otorgar','cumple','00000000-0000-0000-0000-000000000001');
+\echo '--- D-19 reapertura del consultor sin motivo (debe fallar)'
+INSERT INTO calificacion_criterio (criterio_parque_id,estado_anterior,estado_nuevo,origen,consultor_id) VALUES ('00000000-0000-0000-0000-000000000301','no_cumplido','en_revision','consultor','00000000-0000-0000-0000-000000000021');
+\echo '--- D-19 cambio automático y reapertura con motivo (deben pasar)'
+INSERT INTO calificacion_criterio (criterio_parque_id,estado_anterior,estado_nuevo,origen) VALUES ('00000000-0000-0000-0000-000000000301','pendiente','en_revision','sistema');
+INSERT INTO calificacion_criterio (criterio_parque_id,estado_anterior,estado_nuevo,motivo,origen,consultor_id) VALUES ('00000000-0000-0000-0000-000000000301','no_cumplido','en_revision','cambió la configuración de accesos del parque','consultor','00000000-0000-0000-0000-000000000021');
+\echo '--- D-19 editar o borrar el historial (deben fallar)'
+UPDATE calificacion_criterio SET motivo='x';
+DELETE FROM calificacion_criterio;
 \echo '--- R-11 datos iniciales'
 SELECT count(*) AS fases FROM catalogo_fase; SELECT tamano_maximo_evidencia_mb, vigencia_distintivo_anios FROM configuracion;

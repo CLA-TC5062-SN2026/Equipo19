@@ -10,7 +10,7 @@ El agente recibió `diagrama_clases_equipo.puml` y `openapi_equipo.yaml` y entre
 
 | Pregunta | Respuesta |
 |---|---|
-| ¿Están todas las entidades del diagrama? | Sí. Cada clase que no es enumeración tiene su tabla. `OpinionIntermedia` y `OpinionFinal` quedaron en una sola tabla, `opinion_cumplimiento`, con columna `tipo`; lo aceptamos porque el contrato ya las expone con un solo schema y `tipo`, y el CHECK impide `favorable` en la intermedia. |
+| ¿Están todas las entidades del diagrama? | Sí. Cada clase que no es enumeración tiene su tabla. `OpinionIntermedia` y `OpinionFinal` quedaron en una sola tabla, `opinion_cumplimiento`, con columna `tipo`; lo aceptamos porque el contrato ya las expone con un solo schema y `tipo`, y el CHECK impide `favorable` en la intermedia. Después, en la Parte 0, el diagrama también pasó a una sola clase (D-18). |
 | ¿Están todos los atributos? | Faltaba uno que no estaba ni en nuestro diagrama: la fecha de término de un parque histórico (R-01). Sobraba `version_evidencia.comentario` (R-12). |
 | ¿Las FK reflejan bien las relaciones? | Las simples sí. Fallaban las que cruzan dos caminos hacia el mismo expediente (R-02, R-03), la del contacto principal (R-05) y el borrado en cascada desde parque (R-04). |
 | ¿Los tipos son coherentes con el contrato? | Sí: `uuid`, `date`, `timestamptz`, `numeric(5,2)` para porcentajes y `bigint` para tamaños. Donde el diagrama y el contrato usaban nombres distintos, el agente siguió al contrato (`texto`, `firmante`, `fecha_apertura`); ajustamos el diagrama (sección 2.3). |
@@ -65,7 +65,18 @@ La actividad pregunta qué otros archivos hay que actualizar si cambian las tabl
 
 ### 2.5 Carga en PostgreSQL
 
-`psql -v ON_ERROR_STOP=1 -f esquema_bd.sql` sobre una base vacía crea las 35 tablas; la salida de `\dt` está en `pruebas/dt_postgres.txt`. El diagrama entidad-relación generado desde esa base está en `er_sgpis.puml` e `imagenes/er_sgpis.png`.
+`psql -v ON_ERROR_STOP=1 -f esquema_bd.sql` sobre una base vacía crea las 36 tablas (35 del agente más `calificacion_criterio`, sección 2.6); la salida de `\dt` está en `pruebas/dt_postgres.txt`. El diagrama entidad-relación generado desde esa base está en `er_sgpis.puml` e `imagenes/er_sgpis.png`.
+
+### 2.6 Cambios posteriores por la comparación de los tres diseños
+
+Al comparar los S04 de los tres (Parte 0, `diferencias_diseno.md`, sección 6) salieron dos cambios al esquema. Están marcados con `[D-xx]` en `esquema_bd.sql`:
+
+| ID | Cambio | Caso que la base rechaza |
+|---|---|---|
+| D-17 | `dictamen` pasa a colgar del expediente: `expediente_id` obligatorio, `sesion_comite_id` opcional, un dictamen por expediente y FK compuesta para que la sesión sea del mismo expediente. El esquema anterior no podía guardar el "no otorgar" de RF-14-AC-8. | Segundo dictamen del expediente; sesión de otro expediente. |
+| D-19 | Tabla `calificacion_criterio`, historial de solo append de los cambios de estado de cada criterio (RD-14). La función del trigger de la bitácora se generalizó a `solo_append()` y protege las dos tablas. | Reapertura del consultor sin motivo; `UPDATE` y `DELETE` del historial. |
+
+Los casos están al final de `pruebas/pruebas_restricciones.sql`, con su salida en `pruebas/pruebas_restricciones.txt`. También cambiaron `diagrama_clases_equipo.puml`, `openapi_equipo.yaml` (schemas `Dictamen` y `CalificacionCriterio`), `backend/app/modelos.py` y el historial del parque; `er_sgpis.puml` se regeneró con `consolidacion/generar_er.py`.
 
 ## 3. Correcciones al código generado
 
@@ -113,8 +124,8 @@ Después de las correcciones: 50 de 50 pruebas aprobadas, sin respuestas fuera d
 |---|---|---|
 | Salud, catálogo, generaciones, parques e historial, usuarios y contacto principal, asignaciones, criterios del parque, autoevaluación, cumplimiento, plan de trabajo, análisis de riesgos (revisiones), fases, configuración, bitácora | Implementado y probado | 47 |
 | `/auth/*` | S05-S06-A2 | 4 |
-| Evidencias y vínculos, documento de análisis de riesgos, recomendaciones, calificación de criterio | Sprint con almacenamiento de objetos | 16 |
-| Opiniones, Evaluación de Desempeño, comité, dictamen, reportes, recuperación de contraseña, archivo maestro | Sprints de 2027 según prioridad del SRS | 21 |
+| Evidencias, vínculos y observaciones, documento de análisis de riesgos, recomendaciones, calificación de criterio y su historial | Sprint con almacenamiento de objetos | 18 |
+| Opiniones, Evaluación de Desempeño, comité, dictamen, reportes, recuperación de contraseña, archivo maestro, criterios de una versión | Sprints de 2027 según prioridad del SRS | 22 |
 
 ### 3.6 Ejecución
 

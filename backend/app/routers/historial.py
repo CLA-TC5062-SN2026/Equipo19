@@ -14,7 +14,6 @@ from app.modelos import (
     Expediente,
     Generacion,
     OpinionCumplimiento,
-    SesionComite,
     VersionCatalogo,
 )
 from app.routers.generaciones import _generacion_a_esquema
@@ -60,12 +59,13 @@ def obtener_historial_parque(parqueId: uuid.UUID, db: DB):
                             .order_by(OpinionCumplimiento.fecha))
     ]
     dictamenes = [
-        e.Dictamen(id=d.id, parque_id=parque.id, generacion_id=gen_de[s.expediente_id].id, sesion_comite_id=s.id,
-                   tipo=d.tipo, motivo=d.motivo, estado=d.estado, capturado_por=d.capturado_por,
-                   fecha_captura=d.fecha_captura, firmado_por=d.firmado_por, fecha_firma=d.fecha_firma,
-                   vigencia_hasta=d.vigencia_hasta)
-        for d, s in db.execute(select(Dictamen, SesionComite).join(SesionComite, SesionComite.id == Dictamen.sesion_comite_id)
-                               .where(SesionComite.expediente_id.in_(ids)).order_by(Dictamen.fecha_captura)).all()
+        # [D-17] El dictamen cuelga del expediente; antes se llegaba a él por la sesión de comité y se perdía el
+        # "no otorgar" capturado sin sesión (RF-14-AC-8).
+        e.Dictamen(id=d.id, parque_id=parque.id, generacion_id=gen_de[d.expediente_id].id,
+                   sesion_comite_id=d.sesion_comite_id, tipo=d.tipo, motivo=d.motivo, estado=d.estado,
+                   capturado_por=d.capturado_por, fecha_captura=d.fecha_captura, firmado_por=d.firmado_por,
+                   fecha_firma=d.fecha_firma, vigencia_hasta=d.vigencia_hasta)
+        for d in db.scalars(select(Dictamen).where(Dictamen.expediente_id.in_(ids)).order_by(Dictamen.fecha_captura))
     ]
     return e.HistorialParque(
         parque=parque_a_esquema(db, parque),

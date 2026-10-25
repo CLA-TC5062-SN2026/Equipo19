@@ -1,38 +1,76 @@
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 2
+INSERT 0 2
+INSERT 0 2
+INSERT 0 1
+INSERT 0 2
+COMMIT
 --- R-02 vínculo evidencia de X con criterio de Y (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:17: ERROR:  insert or update on table "vinculo_evidencia" violates foreign key constraint "fk_vinculo_criterio_parque"
+psql:pruebas/pruebas_restricciones.sql:17: ERROR:  insert or update on table "vinculo_evidencia" violates foreign key constraint "fk_vinculo_criterio_parque"
 DETAIL:  Key (criterio_parque_id, expediente_id)=(00000000-0000-0000-0000-000000000302, 00000000-0000-0000-0000-000000000201) is not present in table "criterio_parque".
 --- R-02 vínculo correcto (debe pasar)
+INSERT 0 1
 --- R-03 renglón con criterio de otro expediente (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:21: ERROR:  insert or update on table "renglon_plan_trabajo" violates foreign key constraint "fk_renglon_criterio_parque"
+psql:pruebas/pruebas_restricciones.sql:21: ERROR:  insert or update on table "renglon_plan_trabajo" violates foreign key constraint "fk_renglon_criterio_parque"
 DETAIL:  Key (criterio_parque_id, expediente_id)=(00000000-0000-0000-0000-000000000302, 00000000-0000-0000-0000-000000000201) is not present in table "criterio_parque".
 --- R-04 borrar parque con expediente (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:23: ERROR:  update or delete on table "parque" violates foreign key constraint "fk_usuario_parque" on table "usuario"
+psql:pruebas/pruebas_restricciones.sql:23: ERROR:  update or delete on table "parque" violates foreign key constraint "fk_usuario_parque" on table "usuario"
 DETAIL:  Key (id)=(00000000-0000-0000-0000-000000000101) is still referenced from table "usuario".
 --- R-05 contacto principal APPI de otro parque (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:25: ERROR:  insert or update on table "parque" violates foreign key constraint "fk_parque_contacto_principal"
+psql:pruebas/pruebas_restricciones.sql:25: ERROR:  insert or update on table "parque" violates foreign key constraint "fk_parque_contacto_principal"
 DETAIL:  Key (contacto_principal_id, id)=(00000000-0000-0000-0000-000000000012, 00000000-0000-0000-0000-000000000101) is not present in table "usuario".
 --- R-05 contacto principal correcto (debe pasar)
+UPDATE 1
 --- R-06 consultor con parque_id (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:29: ERROR:  new row for relation "usuario" violates check constraint "ck_usuario_appi_con_parque"
-DETAIL:  Failing row contains (d347b87c-b8e3-4da0-a545-77b143c1de76, Cons, c@x.mx, null, consultor, pendiente_activacion, 2026-10-22 16:22:33.031645-06, null, 00000000-0000-0000-0000-000000000101, null).
+psql:pruebas/pruebas_restricciones.sql:29: ERROR:  new row for relation "usuario" violates check constraint "ck_usuario_appi_con_parque"
+DETAIL:  Failing row contains (7cdd3fbd-68b1-4125-8997-7aa8a668be83, Cons, c@x.mx, null, consultor, pendiente_activacion, 2026-10-25 22:54:34.087972+00, null, 00000000-0000-0000-0000-000000000101, null).
 --- R-01 parque histórico sin fecha de término (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:31: ERROR:  new row for relation "parque" violates check constraint "ck_parque_historico_datos"
-DETAIL:  Failing row contains (794d32dd-9599-465f-9c84-16d6b8c23754, historico, Parque Z, null, MX-JAL, historico, 2026-10-22, null, 2022-03-15, null, null).
+psql:pruebas/pruebas_restricciones.sql:31: ERROR:  new row for relation "parque" violates check constraint "ck_parque_historico_datos"
+DETAIL:  Failing row contains (be86365a-d079-404e-b7f7-f4a7a402438c, historico, Parque Z, null, MX-JAL, historico, 2026-10-25, null, 2022-03-15, null, null).
 --- R-07 dos fases en proceso (la segunda debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:34: ERROR:  duplicate key value violates unique constraint "uq_fase_expediente_en_proceso"
+INSERT 0 1
+psql:pruebas/pruebas_restricciones.sql:34: ERROR:  duplicate key value violates unique constraint "uq_fase_expediente_en_proceso"
 DETAIL:  Key (expediente_id)=(00000000-0000-0000-0000-000000000201) already exists.
 --- R-08 TRUNCATE bitácora (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:37: ERROR:  registro_bitacora es de solo append: TRUNCATE no permitido
-CONTEXT:  PL/pgSQL function bitacora_solo_append() line 3 at RAISE
+INSERT 0 1
+psql:pruebas/pruebas_restricciones.sql:37: ERROR:  registro_bitacora es de solo append: TRUNCATE no permitido
+CONTEXT:  PL/pgSQL function solo_append() line 3 at RAISE
 --- bitácora UPDATE (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:39: ERROR:  registro_bitacora es de solo append: UPDATE no permitido
-CONTEXT:  PL/pgSQL function bitacora_solo_append() line 3 at RAISE
+psql:pruebas/pruebas_restricciones.sql:39: ERROR:  registro_bitacora es de solo append: UPDATE no permitido
+CONTEXT:  PL/pgSQL function solo_append() line 3 at RAISE
 --- R-09 intento_login con mayúsculas (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:41: ERROR:  new row for relation "intento_login" violates check constraint "intento_login_correo_check"
+psql:pruebas/pruebas_restricciones.sql:41: ERROR:  new row for relation "intento_login" violates check constraint "intento_login_correo_check"
 DETAIL:  Failing row contains (Appi@X.mx, 0, null).
 --- correo duplicado sin distinguir mayúsculas (debe fallar)
-psql:/home/claude/work/pruebas_restricciones.sql:43: ERROR:  duplicate key value violates unique constraint "uq_usuario_correo"
+psql:pruebas/pruebas_restricciones.sql:43: ERROR:  duplicate key value violates unique constraint "uq_usuario_correo"
 DETAIL:  Key (lower(correo::text))=(coord@ampip.mx) already exists.
+--- D-17 dictamen "no otorgar" sin sesión de comité (RF-14-AC-8, debe pasar)
+INSERT 0 1
+--- D-17 segundo dictamen en el mismo expediente (debe fallar)
+psql:pruebas/pruebas_restricciones.sql:47: ERROR:  duplicate key value violates unique constraint "uq_dictamen_expediente"
+DETAIL:  Key (expediente_id)=(00000000-0000-0000-0000-000000000201) already exists.
+--- D-17 dictamen con la sesión de comité de otro expediente (debe fallar)
+INSERT 0 1
+INSERT 0 1
+psql:pruebas/pruebas_restricciones.sql:51: ERROR:  insert or update on table "dictamen" violates foreign key constraint "fk_dictamen_sesion_comite"
+DETAIL:  Key (sesion_comite_id, expediente_id)=(00000000-0000-0000-0000-000000000501, 00000000-0000-0000-0000-000000000202) is not present in table "sesion_comite".
+--- D-19 reapertura del consultor sin motivo (debe fallar)
+psql:pruebas/pruebas_restricciones.sql:53: ERROR:  new row for relation "calificacion_criterio" violates check constraint "ck_calificacion_reapertura_con_motivo"
+DETAIL:  Failing row contains (facdd4c4-bf10-471c-aeec-2a9be8b6962a, 00000000-0000-0000-0000-000000000301, no_cumplido, en_revision, null, consultor, 00000000-0000-0000-0000-000000000021, 2026-10-25 22:54:34.100034+00).
+--- D-19 cambio automático y reapertura con motivo (deben pasar)
+INSERT 0 1
+INSERT 0 1
+--- D-19 editar o borrar el historial (deben fallar)
+psql:pruebas/pruebas_restricciones.sql:58: ERROR:  calificacion_criterio es de solo append: UPDATE no permitido
+CONTEXT:  PL/pgSQL function solo_append() line 3 at RAISE
+psql:pruebas/pruebas_restricciones.sql:59: ERROR:  calificacion_criterio es de solo append: DELETE no permitido
+CONTEXT:  PL/pgSQL function solo_append() line 3 at RAISE
 --- R-11 datos iniciales
  fases 
 -------
@@ -42,6 +80,3 @@ DETAIL:  Key (lower(correo::text))=(coord@ampip.mx) already exists.
 ----------------------------+---------------------------
                         100 |                         3
 
---- R-04 (aislado) borrar parque Y cuyo único dependiente es su expediente (debe fallar por expediente)
-ERROR:  update or delete on table "parque" violates foreign key constraint "expediente_parque_id_fkey" on table "expediente"
-DETAIL:  Key (id)=(00000000-0000-0000-0000-000000000102) is still referenced from table "expediente".

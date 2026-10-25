@@ -304,6 +304,20 @@ class CriterioParque(Base):
     calificado_por: Mapped[uuid.UUID | None] = _fk("usuario.id")
 
 
+class CalificacionCriterio(Base):
+    """[D-19] Historial de calificaciones (RD-14). Solo se insertan renglones; la base rechaza UPDATE y DELETE."""
+
+    __tablename__ = "calificacion_criterio"
+    id: Mapped[uuid.UUID] = _pk()
+    criterio_parque_id: Mapped[uuid.UUID] = _fk("criterio_parque.id")
+    estado_anterior: Mapped[str] = mapped_column(EstadoCalificacionEnum)
+    estado_nuevo: Mapped[str] = mapped_column(EstadoCalificacionEnum)
+    motivo: Mapped[str | None] = mapped_column(Text)
+    origen: Mapped[str] = mapped_column(String(10))
+    consultor_id: Mapped[uuid.UUID | None] = _fk("usuario.id")
+    fecha: Mapped[datetime] = mapped_column(TZ, server_default=func.now())
+
+
 class Evidencia(Base):
     __tablename__ = "evidencia"
     id: Mapped[uuid.UUID] = _pk()
@@ -430,9 +444,12 @@ class SesionComite(Base):
 
 
 class Dictamen(Base):
+    """[D-17] Pertenece al expediente; la sesión de comité es opcional (RF-14-AC-8)."""
+
     __tablename__ = "dictamen"
     id: Mapped[uuid.UUID] = _pk()
-    sesion_comite_id: Mapped[uuid.UUID] = _fk("sesion_comite.id")
+    expediente_id: Mapped[uuid.UUID] = _fk("expediente.id")
+    sesion_comite_id: Mapped[uuid.UUID | None] = _fk("sesion_comite.id")
     tipo: Mapped[str] = mapped_column(TipoDictamenEnum)
     motivo: Mapped[str] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(EstadoDictamenEnum, server_default="borrador")

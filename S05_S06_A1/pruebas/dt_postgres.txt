@@ -4,6 +4,7 @@
  public | actualizacion_anual        | table | postgres
  public | asignacion_consultor       | table | postgres
  public | autoevaluacion             | table | postgres
+ public | calificacion_criterio      | table | postgres
  public | catalogo_fase              | table | postgres
  public | clasificacion_tipo_pi      | table | postgres
  public | configuracion              | table | postgres
@@ -36,5 +37,5 @@
  public | version_catalogo           | table | postgres
  public | version_evidencia          | table | postgres
  public | vinculo_evidencia          | table | postgres
-(35 rows)
+(36 rows)
 

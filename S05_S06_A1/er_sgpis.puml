@@ -1,4 +1,5 @@
 ' Diagrama entidad-relación generado desde la base cargada con esquema_bd.sql (no se edita a mano).
+' Generador: consolidacion/generar_er.py
 @startuml er_sgpis
 hide circle
 skinparam linetype ortho
@@ -29,6 +30,17 @@ entity autoevaluacion {
     comentario : text
   * fecha : timestamptz
   * registrado_por : uuid <<FK>>
+}
+entity calificacion_criterio {
+  * id : uuid <<PK>>
+  --
+  * criterio_parque_id : uuid <<FK>>
+  * estado_anterior : estado_calificacion
+  * estado_nuevo : estado_calificacion
+    motivo : text
+  * origen : varchar
+    consultor_id : uuid <<FK>>
+  * fecha : timestamptz
 }
 entity catalogo_fase {
   * clave : varchar <<PK>>
@@ -85,7 +97,8 @@ entity desarrollador {
 entity dictamen {
   * id : uuid <<PK>>
   --
-  * sesion_comite_id : uuid <<FK>>
+  * expediente_id : uuid <<FK>>
+    sesion_comite_id : uuid <<FK>>
   * tipo : tipo_dictamen
   * motivo : text
   * estado : estado_dictamen
@@ -334,53 +347,57 @@ entity vinculo_evidencia {
   * estado : estado_vinculo
   * fecha_estado : timestamptz
 }
-usuario ||--o{ actualizacion_anual
+
 expediente ||--o{ actualizacion_anual
-usuario ||--o{ asignacion_consultor
+usuario ||--o{ actualizacion_anual
 expediente ||--o{ asignacion_consultor
-usuario ||--o{ autoevaluacion
+usuario ||--o{ asignacion_consultor
 expediente ||--o{ autoevaluacion
 criterio ||--o{ autoevaluacion
-usuario ||--o{ clasificacion_tipo_pi
+usuario ||--o{ autoevaluacion
+criterio_parque ||--o{ calificacion_criterio
+usuario ||--o{ calificacion_criterio
 parque ||--o{ clasificacion_tipo_pi
+usuario ||--o{ clasificacion_tipo_pi
 usuario ||--o{ configuracion
 subestandar ||--o{ criterio
-usuario ||--o{ criterio_parque
 expediente ||--o{ criterio_parque
 criterio ||--o{ criterio_parque
+usuario ||--o{ criterio_parque
+expediente ||--o{ dictamen
+usuario ||--o{ dictamen
 usuario ||--o{ dictamen
 sesion_comite ||--o{ dictamen
-usuario ||--o{ dictamen
-usuario ||--o{ documento_analisis_riesgos
 expediente ||--o{ documento_analisis_riesgos
+usuario ||--o{ documento_analisis_riesgos
 usuario ||--o{ enlace_un_solo_uso
 version_catalogo ||--o{ estandar
-usuario ||--o{ evaluacion_desempeno
 expediente ||--o{ evaluacion_desempeno
-usuario ||--o{ evidencia
-catalogo_fase ||--o{ evidencia
+usuario ||--o{ evaluacion_desempeno
 expediente ||--o{ evidencia
-generacion ||--o{ expediente
+catalogo_fase ||--o{ evidencia
+usuario ||--o{ evidencia
 parque ||--o{ expediente
+generacion ||--o{ expediente
 expediente ||--o{ fase_expediente
-usuario ||--o{ fase_expediente
 catalogo_fase ||--o{ fase_expediente
+usuario ||--o{ fase_expediente
 version_catalogo ||--o{ generacion
 criterio ||--o{ marca_por_tipo
 usuario ||--o{ mensaje_correo
-vinculo_evidencia ||--o{ observacion
 usuario ||--o{ observacion
+vinculo_evidencia ||--o{ observacion
 version_evidencia ||--o{ observacion
 expediente ||--o{ opinion_cumplimiento
 usuario ||--o{ opinion_cumplimiento
-usuario ||--o{ parque
 desarrollador ||--o{ parque
+usuario ||--o{ parque
 criterio_parque ||--o{ recomendacion
 usuario ||--o{ recomendacion
 usuario ||--o{ registro_bitacora
 parque ||--o{ registro_bitacora
-usuario ||--o{ renglon_plan_trabajo
 expediente ||--o{ renglon_plan_trabajo
+usuario ||--o{ renglon_plan_trabajo
 criterio_parque ||--o{ renglon_plan_trabajo
 expediente ||--o{ revision_analisis_riesgos
 usuario ||--o{ revision_analisis_riesgos

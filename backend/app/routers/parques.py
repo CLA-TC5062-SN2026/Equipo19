@@ -10,7 +10,15 @@ from sqlalchemy import select
 from app import esquemas as e
 from app.comun import DB, Actor, Paginacion, ahora, hoy, mas_un_anio, ordenar_lista, paginar, registrar_bitacora
 from app.errores import ErrorAPI
-from app.modelos import ActualizacionAnual, ClasificacionTipoPI, CriterioParque, Expediente, Generacion, Parque
+from app.modelos import (
+    ActualizacionAnual,
+    CalificacionCriterio,
+    ClasificacionTipoPI,
+    CriterioParque,
+    Expediente,
+    Generacion,
+    Parque,
+)
 from app.permisos import parques_visibles
 from app.servicios import (
     calcular_cumplimiento,
@@ -219,6 +227,13 @@ def reemplazar_tipo_pi(parqueId: uuid.UUID, cuerpo: e.CambioTipoPI, db: DB, acto
         if aplica_ahora and not aplica_antes and vigente is not None:
             dejan_na.append(f.cp.criterio_id)
             cp: CriterioParque = f.cp
+            if cp.estado_calificacion != "pendiente":
+                # [D-19] RD-14: el regreso a "pendiente" queda en el historial como cambio del sistema.
+                db.add(CalificacionCriterio(
+                    criterio_parque_id=cp.id, estado_anterior=cp.estado_calificacion, estado_nuevo="pendiente",
+                    motivo=f"Vuelve a aplicar por el cambio de tipo de PI a {cuerpo.tipo_pi} (RF-11-AC-4)",
+                    origen="sistema",
+                ))
             cp.estado_calificacion = "pendiente"
             cp.fecha_ultimo_cambio = momento
             cp.calificado_por = actor.id

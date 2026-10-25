@@ -78,6 +78,19 @@ info:
     - **Notificaciones por correo** (RF-05-AC-2, aviso de observación a la APPI; RF-03-AC-1, invitación de alta;
       recuperación de contraseña de RF-26-AC-4): efecto lateral de la operación que las origina, con 3 reintentos y
       registro en bitácora si fallan (RNF-12).
+  x-procesos-programados:
+    - nombre: revision-diaria-plazos
+      horario: Diario a las 00:00, America/Mexico_City
+      descripcion: |
+        Marca como atrasado un renglón del plan de trabajo cuando vence su fecha comprometida y el criterio no está
+        cumplido, y marca el parque como atrasado cuando vence su fecha de próxima actualización anual.
+      x-acceptance-criteria: [RF-09-AC-2, RF-09-AC-3, RF-30-AC-2, RF-30-AC-3]
+    - nombre: envio-correos
+      horario: Cada minuto
+      descripcion: |
+        Envía los mensajes pendientes de la outbox (invitaciones, recuperación de contraseña, avisos de observación) con
+        hasta 3 intentos; la falla definitiva queda registrada (RNF-12).
+      x-acceptance-criteria: []
 servers:
   - url: http://localhost:8000/api
     description: Entorno local (docker compose)
@@ -277,41 +290,6 @@ paths:
           description: Solicitud aceptada.
         '400':
           $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /recuperaciones-contrasena/{token}:
-    parameters:
-      - $ref: '#/components/parameters/TokenEnlace'
-    patch:
-      tags: [Autenticación]
-      operationId: actualizarRecuperacionContrasena
-      summary: Fijar contraseña nueva con el enlace de recuperación
-      description: |
-        Usa el token del enlace para fijar una contraseña nueva y revoca las sesiones activas del usuario. El enlace
-        deja de funcionar 30 minutos después de generado o en cuanto se usa una vez, lo que ocurra primero.
-
-        Errores:
-        - 410 `enlace_no_vigente`: el enlace ya se usó o tiene más de 30 minutos.
-      security: []
-      x-acceptance-criteria: [RF-26-AC-4]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecuperacionContrasenaUpdate'
-      responses:
-        '204':
-          description: Contraseña actualizada.
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '410':
-          $ref: '#/components/responses/Gone'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
@@ -1278,7 +1256,9 @@ paths:
         - `en_revision` → `no_cumplido`.
         - `cumplido` o `no_cumplido` → `en_revision` (reapertura): exige `motivo`; no requiere evidencia nueva.
 
-        Se registran fecha y consultor del cambio, y el cálculo de cumplimiento lo refleja.
+        Cada cambio, incluidos los automáticos de RF-27-AC-4 y AC-7, agrega un registro al historial
+        (`GET /parques/{parqueId}/criterios/{criterioId}/calificaciones`) con fecha, consultor y motivo, y el cálculo de
+        cumplimiento lo refleja.
 
         Errores:
         - 409 `transicion_invalida`: transición no permitida desde el estado actual (por ejemplo, a `cumplido` desde
@@ -1756,6 +1736,39 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+    get:
+      tags: [Evidencias]
+      operationId: listarObservaciones
+      summary: Listar las observaciones de una evidencia
+      description: |
+        Observaciones de la evidencia en todas sus versiones, de la más reciente a la más antigua. Con `criterioId`
+        devuelve solo las de ese vínculo. Las recomendaciones del consultor no aparecen aquí (RF-36-AC-2).
+      x-acceptance-criteria: [RF-05-AC-2, RF-05-AC-6, RF-36-AC-2]
+      parameters:
+        - name: criterioId
+          in: query
+          required: false
+          description: Filtra por el criterio del vínculo observado.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Observaciones de la evidencia.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Observacion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /evidencias/{evidenciaId}/observaciones/{observacionId}:
     parameters:
       - $ref: '#/components/parameters/EvidenciaId'
@@ -2469,8 +2482,8 @@ paths:
       tags: [Dictámenes]
       operationId: listarDictamenes
       summary: Consultar dictámenes del parque
-      description: Devuelve los dictámenes del parque en "borrador" o "firmado", visibles para los tres miembros del 
-        comité y Coordinación AMPIP.
+      description: "Devuelve el dictamen de cada expediente del parque (la generación vigente y las anteriores), en \"borrador\"\
+        \ o\n\"firmado\".\n"
       x-acceptance-criteria: [RF-14-AC-6]
       responses:
         '200':
@@ -2494,15 +2507,21 @@ paths:
       operationId: crearDictamen
       summary: Capturar dictamen en borrador
       description: |
-        Coordinación AMPIP o el consultor de comité capturan el dictamen (`otorgar` o `no_otorgar`) con su motivo,
-        asociado a la sesión de comité abierta del parque; queda en "borrador", visible para los tres miembros del
-        comité, sin contar todavía como dictamen oficial. `otorgar` se valida una sola vez, en la captura (y de nuevo
-        si un PATCH cambia el tipo a `otorgar`); `no_otorgar` no exige ninguna condición. Un consultor asignado recibe
-        403.
+        Coordinación AMPIP o el consultor de comité capturan el dictamen del expediente vigente (`otorgar` o
+        `no_otorgar`) con su motivo. Queda en "borrador", visible para Coordinación AMPIP, el Director General y, si hay
+        sesión de comité abierta, su consultor de comité, sin contar todavía como dictamen oficial.
+
+        - `otorgar` se valida una sola vez, en la captura, contra las tres condiciones de RD-09 (y de nuevo si un PATCH
+          cambia el tipo a `otorgar`).
+        - `no_otorgar` no exige ninguna condición (RF-14-AC-8) y se puede capturar aunque RF-15 impida abrir la sesión
+          de comité.
+
+        Ninguno de los dos exige sesión de comité. Si hay una abierta, el dictamen queda ligado a ella
+        (`sesionComiteId`); sin sesión, solo Coordinación AMPIP captura, porque no hay consultor de comité. Un
+        consultor asignado recibe 403.
 
         Errores:
-        - 409 `dictamen_duplicado`: ya existe un dictamen en "borrador" o "firmado" en la sesión vigente.
-        - 409 `sin_sesion_comite_abierta`: el parque no tiene una sesión de comité abierta.
+        - 409 `dictamen_duplicado`: el expediente vigente ya tiene un dictamen (en "borrador" se corrige con PATCH).
         - 422 `otorgar_sin_100_obligatorios`: "No se puede otorgar sin el 100 % de los obligatorios cumplidos".
         - 422 `otorgar_sin_autoevaluacion_revisada`: "No se puede otorgar sin la autoevaluación revisada: hay
           criterios pendientes o en revisión".
@@ -2569,7 +2588,8 @@ paths:
       operationId: actualizarDictamen
       summary: Editar dictamen en borrador o firmarlo
       description: |
-        Dos usos, excluyentes en un mismo cuerpo:
+        Dos usos, excluyentes en un mismo cuerpo. Si el dictamen no tenía sesión de comité y hay una abierta, la edición
+        lo liga a ella.
         - `DictamenEdicion` (`tipo`, `motivo`): Coordinación AMPIP o el consultor de comité corrigen un dictamen en
           "borrador". Si el tipo queda en `otorgar`, se repite la validación de RD-09 con los mismos mensajes que la
           captura.
@@ -3211,6 +3231,96 @@ paths:
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalError'
+  /parques/{parqueId}/criterios/{criterioId}/calificaciones:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/CriterioId'
+    get:
+      tags: [Criterios del parque]
+      operationId: listarCalificacionesCriterio
+      summary: Historial de calificaciones de un criterio
+      description: |
+        Todos los cambios del estado de calificación del criterio en el expediente vigente, del más reciente al más
+        antiguo, con quién y cuándo los hizo y el motivo de cada reapertura (RD-14). Incluye los cambios automáticos.
+      x-acceptance-criteria: [RF-27-AC-2, RF-27-AC-4, RF-27-AC-7, RF-27-AC-8]
+      responses:
+        '200':
+          description: Historial del criterio.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalificacionCriterio'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /restablecimientos-contrasena:
+    post:
+      tags: [Autenticación]
+      operationId: crearRestablecimientoContrasena
+      summary: Fijar contraseña nueva con el enlace de recuperación
+      description: |
+        Recibe el token del enlace en el cuerpo, fija la contraseña nueva y revoca las sesiones activas del usuario.
+        El enlace deja de funcionar 30 minutos después de generado o en cuanto se usa una vez, lo que ocurra primero.
+
+        Errores:
+        - 410 `enlace_no_vigente`: el enlace ya se usó o tiene más de 30 minutos.
+        - 422 `token_invalido`: el token no corresponde a ningún enlace de recuperación.
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestablecimientoContrasenaCreate'
+      responses:
+        '204':
+          description: Contraseña actualizada y sesiones anteriores revocadas.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /versiones-catalogo/{versionId}/criterios:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Catálogo]
+      operationId: listarCriteriosVersion
+      summary: Listar los criterios de una versión del catálogo
+      description: |
+        Criterios de la versión con su método de verificación, sus marcas por tipo de PI y la descripción de evidencia
+        suficiente, para que Coordinación AMPIP la capture o la revise (RF-24). Solo Coordinación AMPIP.
+      x-acceptance-criteria: [RF-01-AC-1, RF-24-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/Estandar'
+      responses:
+        '200':
+          description: Criterios de la versión, ordenados por clave.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Criterio'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     BearerAuth:
@@ -3339,14 +3449,6 @@ components:
       schema:
         type: string
         format: uuid
-    TokenEnlace:
-      name: token
-      in: path
-      required: true
-      description: Token opaco de un solo uso recibido por correo.
-      schema:
-        type: string
-        minLength: 32
     GeneracionIdQuery:
       name: generacionId
       in: query
@@ -3759,14 +3861,6 @@ components:
         correo:
           type: string
           format: email
-    RecuperacionContrasenaUpdate:
-      type: object
-      required: [nuevaContrasena]
-      properties:
-        nuevaContrasena:
-          type: string
-          format: password
-          minLength: 10
     VersionCatalogoCreate:
       type: object
       required: [archivo, nombreVersion]
@@ -4961,6 +5055,8 @@ components:
         sesionComiteId:
           type: string
           format: uuid
+          nullable: true
+          description: Nulo si el dictamen se capturó sin sesión de comité abierta.
         tipo:
           $ref: '#/components/schemas/TipoDictamen'
         motivo:
@@ -4988,6 +5084,8 @@ components:
           description: Solo para "otorgar" firmado; tres años desde la firma (RD-08, pendiente de confirmar con AMPIP).
 
     # ---------------------------------------------------- Reportes
+      description: "Un dictamen por expediente (parque y generación). `sesionComiteId` es la sesión de comité abierta cuando
+        se\ncapturó o se editó por última vez; es nulo si no había ninguna, como en el \"no otorgar\" de RF-14-AC-8.\n"
     AvanceParque:
       type: object
       required: [parqueId, nombre, desarrollador, region, fase, porcentajeObligatorios, porcentajeAvanceGeneral, 
@@ -5348,3 +5446,46 @@ components:
         fecha:
           type: string
           format: date-time
+    CalificacionCriterio:
+      type: object
+      description: Un cambio del estado de calificación de un criterio del parque. Solo se agregan; nunca se editan.
+      required: [id, criterioId, estadoAnterior, estadoNuevo, motivo, origen, consultorId, fecha]
+      properties:
+        id:
+          type: string
+          format: uuid
+        criterioId:
+          type: string
+          format: uuid
+        estadoAnterior:
+          $ref: '#/components/schemas/EstadoCalificacion'
+        estadoNuevo:
+          $ref: '#/components/schemas/EstadoCalificacion'
+        motivo:
+          type: string
+          nullable: true
+          description: Obligatorio en la reapertura (RF-27-AC-8).
+        origen:
+          type: string
+          enum: [consultor, sistema]
+          description: '`sistema` para los cambios automáticos por evidencia enviada (RF-27-AC-4, RF-27-AC-7).'
+        consultorId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Nulo cuando `origen` es `sistema`.
+        fecha:
+          type: string
+          format: date-time
+    RestablecimientoContrasenaCreate:
+      type: object
+      required: [token, nuevaContrasena]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          description: Token del enlace de recuperación que llegó por correo.
+        nuevaContrasena:
+          type: string
+          format: password
+          minLength: 10

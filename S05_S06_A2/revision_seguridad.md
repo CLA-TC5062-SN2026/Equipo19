@@ -46,7 +46,7 @@ El registro no es abierto. RF-03 reserva el alta de cuentas a Coordinación AMPI
 
 ### 2.1 Qué rutas quedaron protegidas
 
-El contrato pone `security: [BearerAuth: []]` en todo y lo quita con `security: []` en cinco operaciones: `GET /salud`, `POST /auth/login`, `POST /auth/register` y las dos de recuperación de contraseña (`POST /recuperaciones-contrasena` y `PATCH /recuperaciones-contrasena/{token}`). Las tres primeras están implementadas y siguen públicas; la recuperación de contraseña todavía no se implementa. Todo lo demás que está implementado exige token: las 46 operaciones CRUD de S05-S06-A1, más `GET /auth/me` y `POST /auth/logout`.
+El contrato pone `security: [BearerAuth: []]` en todo y lo quita con `security: []` en cinco operaciones: `GET /salud`, `POST /auth/login`, `POST /auth/register` y las dos de recuperación de contraseña (`POST /recuperaciones-contrasena` y `POST /restablecimientos-contrasena`, que desde la Parte 0 recibe el token en el cuerpo, D-20). Las tres primeras están implementadas y siguen públicas; la recuperación de contraseña todavía no se implementa. Todo lo demás que está implementado exige token: las 46 operaciones CRUD de S05-S06-A1, más `GET /auth/me` y `POST /auth/logout`.
 
 Cada router protegido se monta en `main.py` con la dependencia `permisos.autorizar`. Esa dependencia primero valida el token y la sesión (401 si falla) y luego busca la ruta en el mapa `PERMISOS` de `app/permisos.py` (403 si el perfil no aparece). El mapa es la única fuente de permisos. Al arrancar, `verificar_mapa` compara las rutas con el mapa y la API no levanta si una ruta protegida no tiene entrada o si una entrada no corresponde a ninguna ruta.
 
@@ -138,7 +138,7 @@ El consultor asignado registra el plan de trabajo y tiene que elegir como respon
 | Aislamiento (RNF-01) | `GET /api/parques/{otro}` con el token de la APPI | 403 | 403 `sin_permiso` |
 | Bitácora (RF-35-AC-2) | `GET /api/bitacora?accion=acceso_denegado` con Coordinación | Los dos 403 registrados | 200, dos registros "denegado" con usuario, rol y ruta |
 
-Las mismas reglas están automatizadas en `test_permisos.py`. Una prueba recorre las 48 rutas protegidas y exige 401 sin token y con token alterado. Otras cubren el 403 por rol, el aislamiento entre parques, la pérdida de acceso al reasignar consultor, la autoevaluación solo para la APPI, las revisiones de análisis de riesgos ocultas a Coordinación, la bitácora solo para Coordinación y el registro del 403. La suite completa del backend tiene 80 pruebas y todas pasan.
+Las mismas reglas están automatizadas en `test_permisos.py`. Una prueba recorre las 48 rutas protegidas y exige 401 sin token y con token alterado. Otras cubren el 403 por rol, el aislamiento entre parques, la pérdida de acceso al reasignar consultor, la autoevaluación solo para la APPI, las revisiones de análisis de riesgos ocultas a Coordinación, la bitácora solo para Coordinación y el registro del 403. La suite completa del backend tiene 82 pruebas y todas pasan.
 
 ## 3. Video
 

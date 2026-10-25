@@ -1,5 +1,6 @@
 ' SGPIS: diagrama de clases consolidado del equipo 19 (S05-S06-A1, Parte 0)
-' Fuentes: SRS_equipo.md v2.0, openapi_equipo.yaml v2.0.0 y el diagrama individual de S04_A1 (base).
+' Fuentes: SRS_equipo.md v2.0, openapi_equipo.yaml v2.0.0 y los diagramas individuales de S04_A1
+' (Ángel como base; Leonardo y Erick comparados en evidencia_agente/analisis_diferencias_agente.md).
 ' Cambios respecto de la base y su motivo: diferencias_diseno.md (D-xx).
 ' Ajustado después de revisar esquema_bd.sql (revision_sql.md, sección 2.3).
 ' Notación: "/" antes de un atributo = derivado (se calcula, no se guarda).
@@ -55,6 +56,10 @@ enum EstadoFase {
   en_proceso
   completada
   avanzada_por_excepcion
+}
+enum TipoOpinion {
+  intermedia
+  final
 }
 enum TipoDictamen {
   otorgar
@@ -279,6 +284,18 @@ note bottom of CriterioParque
   evidencias (RF-11-AC-6); un NA que vuelve a
   aplicar entra en "pendiente" (RF-11-AC-4).
 end note
+class CalificacionCriterio {
+  estadoAnterior: EstadoCalificacion
+  estadoNuevo: EstadoCalificacion
+  motivo: String [0..1]
+  origen: {consultor, sistema}
+  fecha: DateTime
+}
+note bottom of CalificacionCriterio
+  D-19: historial de cada cambio de estado,
+  manual o automático (RD-14, RF-27-AC-8).
+  Solo se agregan registros.
+end note
 class Evidencia {
   id: UUID
   fase: String
@@ -323,6 +340,8 @@ Autoevaluacion "0..*" --> "1" Usuario : registrada por
 Expediente "1" *-- "0..*" CriterioParque
 CriterioParque "0..*" --> "1" Criterio
 CriterioParque "0..*" --> "0..1" Usuario : calificado por
+CriterioParque "1" *-- "0..*" CalificacionCriterio
+CalificacionCriterio "0..*" --> "0..1" Usuario : consultor
 Expediente "1" *-- "0..*" Evidencia
 Evidencia "1" *-- "1..*" VinculoEvidencia
 VinculoEvidencia "0..*" --> "1" CriterioParque
@@ -362,16 +381,18 @@ Expediente "1" *-- "0..1" DocumentoAnalisisRiesgos
 DocumentoAnalisisRiesgos "0..*" --> "1" Usuario : subido por
 
 ' ===================== Opiniones, desempeño, comité y dictamen =====================
-abstract class OpinionCumplimiento {
+class OpinionCumplimiento {
+  tipo: TipoOpinion
+  favorable: boolean [0..1]
   fecha: DateTime
   porcentajeObligatorios: decimal
   porcentajeAvanceGeneral: decimal
   comentarios: String [0..1]
 }
-class OpinionIntermedia
-class OpinionFinal {
-  favorable: boolean
-}
+note bottom of OpinionCumplimiento
+  D-18: una clase con tipo; favorable solo
+  en la final. Una de cada tipo por expediente.
+end note
 class EvaluacionDesempeno {
   folio: String
   fecha: DateTime
@@ -390,17 +411,20 @@ class Dictamen {
   fechaFirma: DateTime [0..1]
   vigenciaHasta: Date [0..1]
 }
+note bottom of Dictamen
+  D-17: pertenece al expediente. La sesión de
+  comité es opcional: un "no otorgar" se puede
+  capturar sin ella (RF-14-AC-8).
+end note
 
-OpinionCumplimiento <|-- OpinionIntermedia
-OpinionCumplimiento <|-- OpinionFinal
-Expediente "1" *-- "0..1" OpinionIntermedia
-Expediente "1" *-- "0..1" OpinionFinal
+Expediente "1" *-- "0..2" OpinionCumplimiento
 OpinionCumplimiento "0..*" --> "1" Usuario : emitida por
 Expediente "1" *-- "0..1" EvaluacionDesempeno
 EvaluacionDesempeno "0..*" --> "1" Usuario : consultor
 Expediente "1" *-- "0..*" SesionComite
 SesionComite "0..*" --> "1" Usuario : consultor de comité
-SesionComite "1" *-- "0..1" Dictamen
+Expediente "1" *-- "0..1" Dictamen
+Dictamen "0..1" --> "0..1" SesionComite : capturado en
 Dictamen "0..*" --> "1" Usuario : capturado por
 Dictamen "0..*" --> "0..1" Usuario : firmado por
 

@@ -1,6 +1,15 @@
 """Parques, tipo de PI, fechas del programa e historial (RF-02, RF-11, RF-28, RF-29, RF-30, RF-31)."""
 
+import psycopg
+
 from tests.ayudas import cargar_catalogo, criterio_por_texto, crear_generacion, crear_parque, escenario
+from tests.conftest import ADMIN_URL, PRUEBA
+
+
+def _sql(q, *args):
+    with psycopg.connect(ADMIN_URL.rsplit("/", 1)[0] + "/" + PRUEBA, autocommit=True) as c:
+        cur = c.execute(q, args)
+        return cur.fetchall() if cur.description else None
 
 
 def _base(c):
@@ -120,3 +129,36 @@ def test_RF_31_AC_1_historial(cliente):
     r = cliente.get(f"/api/parques/{e['parque']['id']}/historial")
     assert r.status_code == 200
     assert len(r.json()["generaciones"]) == 1
+
+
+def test_D_17_RF_14_AC_8_historial_con_no_otorgar_sin_sesion(cliente):
+    """El dictamen cuelga del expediente: un "no otorgar" capturado sin sesión de comité aparece en el historial."""
+    e = escenario(cliente)
+    pid = e["parque"]["id"]
+    ((exp_id,),) = _sql("SELECT id FROM expediente WHERE parque_id = %s", pid)
+    ((coord_id,),) = _sql("SELECT id FROM usuario WHERE rol = 'coordinacion_ampip' ORDER BY fecha_alta LIMIT 1")
+    _sql("INSERT INTO dictamen (expediente_id, tipo, motivo, capturado_por) VALUES (%s, 'no_otorgar', %s, %s)",
+         exp_id, "60 % de obligatorios cumplidos", coord_id)
+    r = cliente.get(f"/api/parques/{pid}/historial")
+    assert r.status_code == 200, r.text
+    (dictamen,) = r.json()["dictamenes"]
+    assert dictamen["tipo"] == "no_otorgar" and dictamen["sesionComiteId"] is None
+    assert dictamen["generacionId"] == e["generacion"]["id"] and dictamen["estado"] == "borrador"
+
+
+def test_D_19_criterio_que_vuelve_a_aplicar_deja_historial(cliente):
+    """RD-14: un criterio que conservaba su calificación mientras fue NA (RF-11-AC-6) regresa a "pendiente" al volver
+    a aplicar (RF-11-AC-4) y el cambio queda en el historial. Si ya estaba en "pendiente" no hay cambio que registrar."""
+    e = escenario(cliente)
+    pid = e["parque"]["id"]
+    ((cp_id,),) = _sql(
+        "SELECT cp.id FROM criterio_parque cp JOIN criterio c ON c.id = cp.criterio_id "
+        "JOIN expediente x ON x.id = cp.expediente_id WHERE x.parque_id = %s AND c.texto ILIKE %s",
+        pid, "%cámara en cada caseta%")
+    _sql("UPDATE criterio_parque SET estado_calificacion = 'cumplido' WHERE id = %s", cp_id)
+    r = cliente.put(f"/api/parques/{pid}/tipo-pi", json={"tipoPI": "operacion_cerrado", "fechaCambio": "2027-06-01",
+                                                         "motivo": "Inició operaciones"})
+    assert r.status_code == 200, r.text
+    filas = _sql("SELECT estado_anterior, estado_nuevo, origen, consultor_id FROM calificacion_criterio "
+                 "WHERE criterio_parque_id = %s", cp_id)
+    assert filas == [("cumplido", "pendiente", "sistema", None)]

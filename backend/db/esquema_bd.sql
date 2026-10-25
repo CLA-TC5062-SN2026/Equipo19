@@ -2,7 +2,9 @@
 -- SGPIS: esquema físico de la base de datos (PostgreSQL 16)
 -- Equipo 19, S05-S06-A1. Fuentes: diagrama_clases_equipo.puml y openapi_equipo.yaml v2.0.0
 -- Parte del borrador del agente (evidencia_agente/esquema_bd_v0.sql); cada corrección
--- del equipo está marcada con [R-xx] y explicada en revision_sql.md.
+-- del equipo está marcada con [R-xx] y explicada en revision_sql.md. Los cambios que salieron de
+-- comparar los tres diseños individuales (Parte 0) están marcados con [D-xx] y explicados en
+-- diferencias_diseno.md.
 -- Ejecutar sobre una base vacía:  psql -v ON_ERROR_STOP=1 -f esquema_bd.sql
 -- Convenciones: snake_case en español sin acentos; ids uuid con
 -- gen_random_uuid(); fechas de negocio en date; marcas de tiempo en
@@ -317,6 +319,26 @@ CREATE TABLE criterio_parque (
 CREATE INDEX ix_criterio_parque_criterio ON criterio_parque (criterio_id);
 CREATE INDEX ix_criterio_parque_estado ON criterio_parque (expediente_id, estado_calificacion);
 
+-- [D-19] Historial de calificaciones (RD-14, RF-27-AC-2 y AC-8). criterio_parque guarda solo el estado
+-- actual; cada cambio, manual o automático, deja aquí un registro que no se edita ni se borra.
+-- Sin CASCADE: el historial no desaparece aunque alguien intente borrar el criterio del parque.
+CREATE TABLE calificacion_criterio (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  criterio_parque_id  uuid NOT NULL REFERENCES criterio_parque (id),
+  estado_anterior     estado_calificacion NOT NULL,
+  estado_nuevo        estado_calificacion NOT NULL,
+  motivo              text,
+  origen              varchar(10) NOT NULL CHECK (origen IN ('consultor', 'sistema')),
+  consultor_id        uuid REFERENCES usuario (id),
+  fecha               timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ck_calificacion_cambia CHECK (estado_anterior <> estado_nuevo),
+  CONSTRAINT ck_calificacion_origen CHECK ((origen = 'consultor') = (consultor_id IS NOT NULL)),
+  -- RF-27-AC-8: el consultor solo regresa un criterio calificado a "en revisión" con un motivo.
+  CONSTRAINT ck_calificacion_reapertura_con_motivo
+    CHECK (NOT (origen = 'consultor' AND estado_nuevo = 'en_revision') OR motivo IS NOT NULL)
+);
+CREATE INDEX ix_calificacion_criterio_fecha ON calificacion_criterio (criterio_parque_id, fecha DESC);
+
 CREATE TABLE evidencia (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   expediente_id  uuid NOT NULL REFERENCES expediente (id) ON DELETE CASCADE,
@@ -466,16 +488,22 @@ CREATE TABLE sesion_comite (
   consultor_comite_id  uuid NOT NULL REFERENCES usuario (id),
   fecha_apertura       timestamptz NOT NULL DEFAULT now(),
   fecha_cierre         timestamptz,
-  CONSTRAINT ck_sesion_comite_fechas CHECK (fecha_cierre IS NULL OR fecha_cierre >= fecha_apertura)
+  CONSTRAINT ck_sesion_comite_fechas CHECK (fecha_cierre IS NULL OR fecha_cierre >= fecha_apertura),
+  -- [D-17] Destino de la FK compuesta del dictamen.
+  CONSTRAINT uq_sesion_comite_id_expediente UNIQUE (id, expediente_id)
 );
 CREATE INDEX ix_sesion_comite_expediente ON sesion_comite (expediente_id);
 CREATE INDEX ix_sesion_comite_consultor ON sesion_comite (consultor_comite_id) WHERE fecha_cierre IS NULL;
 -- A lo sumo una sesión abierta por expediente.
 CREATE UNIQUE INDEX uq_sesion_comite_abierta ON sesion_comite (expediente_id) WHERE fecha_cierre IS NULL;
 
+-- [D-17] El dictamen pertenece al expediente. RF-14-AC-8 acepta un "no otorgar" en un expediente sin
+-- autoevaluación revisada ni Opinión final favorable, justo el caso en que RF-15 impide abrir la sesión
+-- de comité. Con sesion_comite_id obligatorio ese dictamen no se podía guardar.
 CREATE TABLE dictamen (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  sesion_comite_id  uuid NOT NULL REFERENCES sesion_comite (id),  -- [R-04] el dictamen no se borra nunca
+  expediente_id     uuid NOT NULL REFERENCES expediente (id),  -- [R-04] el dictamen no se borra nunca
+  sesion_comite_id  uuid,                                     -- sesión en la que se capturó, si hubo
   tipo              tipo_dictamen NOT NULL,
   motivo            text NOT NULL,
   estado            estado_dictamen NOT NULL DEFAULT 'borrador',
@@ -484,13 +512,17 @@ CREATE TABLE dictamen (
   fecha_firma       timestamptz,
   firmado_por       uuid REFERENCES usuario (id),
   vigencia_hasta    date,
-  CONSTRAINT uq_dictamen_sesion UNIQUE (sesion_comite_id),
+  CONSTRAINT uq_dictamen_expediente UNIQUE (expediente_id),
+  -- La sesión, si existe, es del mismo expediente.
+  CONSTRAINT fk_dictamen_sesion_comite FOREIGN KEY (sesion_comite_id, expediente_id)
+    REFERENCES sesion_comite (id, expediente_id),
   CONSTRAINT ck_dictamen_firma_coherente
     CHECK ((estado = 'firmado') = (fecha_firma IS NOT NULL AND firmado_por IS NOT NULL)),
   CONSTRAINT ck_dictamen_vigencia
     CHECK (vigencia_hasta IS NULL OR (estado = 'firmado' AND tipo = 'otorgar'))
 );
 CREATE INDEX ix_dictamen_estado ON dictamen (estado);
+CREATE INDEX ix_dictamen_sesion_comite ON dictamen (sesion_comite_id);
 
 -- ===================== Bitácora y correo =====================
 CREATE TABLE registro_bitacora (
@@ -511,19 +543,26 @@ CREATE INDEX ix_bitacora_usuario_fecha ON registro_bitacora (usuario_id, fecha_h
 CREATE INDEX ix_bitacora_accion ON registro_bitacora (accion);
 
 -- Solo append (RNF-03, RF-35): se rechaza cualquier UPDATE o DELETE.
-CREATE FUNCTION bitacora_solo_append() RETURNS trigger
+-- [D-19] La misma función protege el historial de calificaciones; el mensaje nombra la tabla.
+CREATE FUNCTION solo_append() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  RAISE EXCEPTION 'registro_bitacora es de solo append: % no permitido', TG_OP;
+  RAISE EXCEPTION '% es de solo append: % no permitido', TG_TABLE_NAME, TG_OP;
 END;
 $$;
 CREATE TRIGGER tg_bitacora_solo_append
   BEFORE UPDATE OR DELETE ON registro_bitacora
-  FOR EACH ROW EXECUTE FUNCTION bitacora_solo_append();
+  FOR EACH ROW EXECUTE FUNCTION solo_append();
 -- [R-08] El trigger por renglón no detiene TRUNCATE, que borra todo de un golpe.
 CREATE TRIGGER tg_bitacora_sin_truncate
   BEFORE TRUNCATE ON registro_bitacora
-  FOR EACH STATEMENT EXECUTE FUNCTION bitacora_solo_append();
+  FOR EACH STATEMENT EXECUTE FUNCTION solo_append();
+CREATE TRIGGER tg_calificacion_solo_append
+  BEFORE UPDATE OR DELETE ON calificacion_criterio
+  FOR EACH ROW EXECUTE FUNCTION solo_append();
+CREATE TRIGGER tg_calificacion_sin_truncate
+  BEFORE TRUNCATE ON calificacion_criterio
+  FOR EACH STATEMENT EXECUTE FUNCTION solo_append();
 
 -- [R-10] Outbox de correo (RNF-12): el v0 no guardaba el cuerpo, así que el worker no
 -- tendría qué enviar, ni el error del último intento.
