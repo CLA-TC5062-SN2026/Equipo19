@@ -22,13 +22,118 @@ El registro no es abierto. RF-03 reserva el alta de cuentas a Coordinación AMPI
 | ¿El middleware rechaza firma inválida o token vencido? | Sí. El algoritmo está fijo en HS256, así que un token con `alg: none` o firmado con otra llave se rechaza. Un token con firma válida pero sesión revocada, vencida o inactiva también da 401. | `test_token_con_firma_invalida_401` cubre un carácter cambiado en la firma, otra llave y `alg: none`; `test_token_expirado_401`; `test_RF_26_AC_5_logout_invalida_token`. |
 | ¿El secret está en código duro o en variable de entorno? | En variable de entorno, sin valor por omisión, con mínimo de 32 bytes. Encontramos el hueco S-01, que se describe abajo. | `test_secreto_no_esta_en_el_codigo` recorre `app/`; `test_secreto_de_ejemplo_rechazado`. |
 
-### 1.3 Hallazgos y correcciones
+### 1.3 Evidencia en el código
+
+Rutas relativas a `backend/`. Los números de línea son los del commit que se entrega.
+
+**Expiración explícita.** `JWT_EXPIRATION` no tiene valor por omisión y solo acepta de 60 a 86,400 segundos:
+
+```python
+# app/config.py:17-18
+jwt_secret: SecretStr | None = None
+jwt_expiration: int | None = Field(default=None, ge=60, le=86400)
+```
+
+Si falta, no se emite ningún token:
+
+```python
+# app/seguridad.py:75-79
+def duracion_token() -> timedelta:
+    segundos = get_settings().jwt_expiration
+    if segundos is None:
+        raise _error_configuracion("JWT_EXPIRATION")
+    return timedelta(seconds=segundos)
+```
+
+El login calcula `expira = emitido + duracion_token()` (`app/routers/autenticacion.py:121`) y lo mete en el claim `exp`:
+
+```python
+# app/seguridad.py:116-123
+def emitir_token(usuario_id: uuid.UUID, sid: uuid.UUID, emitido: datetime, expira: datetime) -> str:
+    claims = {
+        "sub": str(usuario_id),
+        "sid": str(sid),
+        "iat": int(emitido.timestamp()),
+        "exp": int(expira.timestamp()),
+    }
+    return jwt.encode(claims, _secreto(), algorithm=ALGORITMO_JWT)
+```
+
+**`/register` sin contraseña en la respuesta.** La ruta declara `response_model=e.Usuario` (`app/routers/autenticacion.py:39`), y ese schema no tiene campo de contraseña ni de hash:
+
+```python
+# app/esquemas.py:226-234
+class Usuario(Esquema):
+    id: uuid.UUID
+    correo: str
+    nombre: str
+    rol: Rol
+    parque_id: uuid.UUID | None = None
+    desarrollador: str | None = None
+    estado: EstadoUsuario
+    fecha_alta: datetime
+```
+
+La contraseña solo se guarda como hash bcrypt con costo 12:
+
+```python
+# app/routers/autenticacion.py:59
+u.contrasena_hash = hash_contrasena(cuerpo.contrasena)
+# app/seguridad.py:93-94
+def hash_contrasena(contrasena: str) -> str:
+    return bcrypt.hashpw(contrasena.encode("utf-8"), bcrypt.gensalt(rounds=COSTO_BCRYPT)).decode("ascii")
+```
+
+**Firma inválida y token vencido.** Solo se acepta HS256, los cuatro claims son obligatorios y cualquier error de PyJWT (firma, `exp` vencido, `alg: none`, claim faltante) termina en 401:
+
+```python
+# app/seguridad.py:126-137
+def _decodificar(token: str) -> tuple[uuid.UUID, uuid.UUID]:
+    secreto = _secreto()
+    try:
+        claims = jwt.decode(
+            token,
+            secreto,
+            algorithms=[ALGORITMO_JWT],
+            options={"require": ["sub", "sid", "iat", "exp"]},
+        )
+        return uuid.UUID(str(claims["sub"])), uuid.UUID(str(claims["sid"]))
+    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError):
+        raise sesion_invalida() from None
+```
+
+Después de la firma se valida la sesión: que exista, que sea de ese usuario, que no esté revocada ni vencida y que no lleve 60 minutos sin uso (`app/seguridad.py:146-155`). Sin encabezado, la dependencia responde 401 antes de llegar al JWT:
+
+```python
+# app/seguridad.py:170-174
+def sesion_autenticada(cred: Credenciales, db: Annotated[Session, Depends(get_db)]) -> Autenticacion:
+    """Exige `Authorization: Bearer <token>` válido; sin él, 401."""
+    if cred is None:
+        raise sesion_invalida()
+    return validar_token(db, cred.credentials)
+```
+
+**Secret en variable de entorno.** `JWT_SECRET` se lee de `Settings` (arriba, `app/config.py:17`), sin valor por omisión, y se valida en cada uso:
+
+```python
+# app/seguridad.py:67-72
+def _secreto() -> str:
+    s = get_settings().jwt_secret
+    valor = s.get_secret_value() if s is not None else ""
+    if len(valor.encode("utf-8")) < MIN_BYTES_SECRETO or valor in SECRETOS_DE_EJEMPLO:
+        raise _error_configuracion("JWT_SECRET")
+    return valor
+```
+
+`.env.example` trae las dos variables (`JWT_SECRET` en la línea 19 y `JWT_EXPIRATION=28800` en la 23); `.env` está en `.gitignore`.
+
+### 1.4 Hallazgos y correcciones
 
 | ID | Hallazgo | Riesgo | Corrección |
 |---|---|---|---|
-| S-01 | `.env.example` trae `JWT_SECRET=cambiar_por_un_secreto_aleatorio_de_al_menos_32_bytes`. Ese texto mide más de 32 bytes, así que la validación de longitud lo aceptaba. | Quien copie `.env.example` a `.env` sin editarlo firma tokens con un secreto que está publicado en el repositorio; cualquiera podría fabricar un token válido para cualquier `sub`. El riesgo baja porque además se exige una sesión `sid` real, pero el secreto deja de proteger algo. | `seguridad.py` rechaza los valores de ejemplo conocidos y responde 500, igual que si faltara la variable. |
+| S-01 | `.env.example` trae `JWT_SECRET=cambiar_por_un_secreto_aleatorio_de_al_menos_32_bytes`. Ese texto mide más de 32 bytes, así que la validación de longitud lo aceptaba. | Quien copie `.env.example` a `.env` sin editarlo firma tokens con un secreto que está publicado en el repositorio; cualquiera podría fabricar un token válido para cualquier `sub`. El riesgo baja porque además se exige una sesión `sid` real, pero el secreto deja de proteger algo. | `app/seguridad.py:64` guarda los valores de ejemplo publicados (`SECRETOS_DE_EJEMPLO`) y la línea 70 los rechaza junto con los secretos cortos: `if len(valor.encode("utf-8")) < MIN_BYTES_SECRETO or valor in SECRETOS_DE_EJEMPLO:`. La API responde 500, igual que si faltara la variable. Prueba: `test_secreto_de_ejemplo_rechazado`. |
 
-### 1.4 Lo que el agente resolvió bien y conservamos
+### 1.5 Lo que el agente resolvió bien y conservamos
 
 - Tiempo de respuesta parejo en el login. Cuando el correo no existe o la cuenta no está activa, igual se hace una comparación bcrypt contra un hash de relleno, para que el tiempo no revele qué cuentas existen. El mensaje es el mismo en los tres casos.
 - El contador de intentos corre para correos que no existen y se busca en minúsculas, así que el bloqueo de RF-26-AC-3 no se brinca cambiando mayúsculas (esto ya lo protegía la corrección R-09 del esquema).
@@ -37,7 +142,7 @@ El registro no es abierto. RF-03 reserva el alta de cuentas a Coordinación AMPI
 - `HTTPBearer(auto_error=False)`. La versión por omisión de FastAPI responde 403 cuando falta el encabezado; con esta opción el 401 lo decide nuestro código, con `WWW-Authenticate: Bearer`.
 - Rol y estado se leen de la base en cada solicitud. Una baja (RF-29) revoca las sesiones y además el usuario inactivo no pasa la validación, aunque su token siga sin vencer (`test_usuario_dado_de_baja_pierde_acceso_inmediato`).
 
-### 1.5 Riesgos aceptados
+### 1.6 Riesgos aceptados
 
 - Bloqueo como denegación de servicio. Cinco intentos fallidos bloquean una cuenta 15 minutos aunque los haga otra persona. Es lo que pide RF-26-AC-3; lo anotamos para revisarlo con AMPIP si se vuelve un problema.
 - Sin límite global de intentos por IP. El bloqueo es por correo. Un límite por IP corresponde al proxy de producción (Caddy) y no a esta actividad.
@@ -48,7 +153,30 @@ El registro no es abierto. RF-03 reserva el alta de cuentas a Coordinación AMPI
 
 El contrato pone `security: [BearerAuth: []]` en todo y lo quita con `security: []` en cinco operaciones: `GET /salud`, `POST /auth/login`, `POST /auth/register` y las dos de recuperación de contraseña (`POST /recuperaciones-contrasena` y `POST /restablecimientos-contrasena`, que desde la Parte 0 recibe el token en el cuerpo, D-20). Las tres primeras están implementadas y siguen públicas; la recuperación de contraseña todavía no se implementa. Todo lo demás que está implementado exige token: las 46 operaciones CRUD de S05-S06-A1, más `GET /auth/me` y `POST /auth/logout`.
 
-Cada router protegido se monta en `main.py` con la dependencia `permisos.autorizar`. Esa dependencia primero valida el token y la sesión (401 si falla) y luego busca la ruta en el mapa `PERMISOS` de `app/permisos.py` (403 si el perfil no aparece). El mapa es la única fuente de permisos. Al arrancar, `verificar_mapa` compara las rutas con el mapa y la API no levanta si una ruta protegida no tiene entrada o si una entrada no corresponde a ninguna ruta.
+Cada router protegido se monta con la dependencia `permisos.autorizar` (`app/main.py:57-58`):
+
+```python
+for modulo in PROTEGIDOS:
+    app.include_router(modulo.router, prefix=PREFIJO, dependencies=[Depends(autorizar)])
+```
+
+ Esa dependencia primero valida el token y la sesión (401 si falla) y luego busca la ruta en el mapa `PERMISOS` de `app/permisos.py` (403 si el perfil no aparece):
+
+```python
+# app/permisos.py:241-250
+def autorizar(request: Request, usuario: UsuarioAutenticado, db: DB) -> Usuario:
+    """401 sin sesión válida (lo resuelve UsuarioAutenticado); 403 si el perfil no está en el mapa para la ruta."""
+    plantilla = _plantilla(request)
+    permitidos = PERMISOS.get((request.method, plantilla or ""))
+    if permitidos is None:  # no debería pasar: verificar_mapa lo impide al arrancar. Falla cerrado.
+        log.error("Ruta sin entrada en PERMISOS: %s %s", request.method, plantilla)
+        raise denegar(db, request, usuario, "ruta sin permisos definidos")
+
+    if usuario.rol in permitidos:
+        return usuario
+```
+
+ El mapa es la única fuente de permisos. Al arrancar, `verificar_mapa` (`app/permisos.py:305`) compara las rutas con el mapa y la API no levanta si una ruta protegida no tiene entrada o si una entrada no corresponde a ninguna ruta.
 
 Los perfiles son de dos tipos. Los globales dependen solo del rol. Los relativos a un parque combinan el rol con una relación vigente que se lee de la base en cada solicitud: la APPI con su `parque_id`, el consultor con su asignación vigente o una sesión de comité abierta, el gerente con el desarrollador del parque. Por eso una reasignación (RF-10-AC-2) o una baja (RF-29) quitan el acceso en la solicitud siguiente, sin esperar a que venza el token. Un parque dado de baja ya no da acceso por relación a nadie. El Administrador técnico no aparece en el mapa, así que recibe 403 en todas las rutas de negocio (RF-03-AC-3, RNF-02).
 
@@ -111,8 +239,8 @@ Cada 403 queda en la bitácora con acción `acceso_denegado`, resultado "denegad
 
 | ID | Hallazgo en el código del agente | Riesgo | Corrección | Prueba |
 |---|---|---|---|---|
-| P-01 | El gerente corporativo leía todo el expediente de los parques de su desarrollador: criterios, autoevaluaciones con comentarios, plan de trabajo con responsables, asignaciones e historial. | El SRS le da una vista de solo lectura del avance (2.3, RF-23). Los comentarios de autoevaluación y el plan describen huecos de seguridad del parque, que es justo lo que RNF-02 cuida. | El gerente queda con la ficha del parque, el cumplimiento y las fases. El resto del expediente usa el grupo `LECTURA_DETALLE`, que no lo incluye. | `test_P_01_gerente_solo_ve_el_avance_de_sus_parques` |
-| P-02 | Con todo protegido, crear un usuario exige una sesión de Coordinación, y no había manera de crear la primera. El agente lo señaló y dejó la semilla dependiendo de una cuenta que nadie podía crear. | Sin primera cuenta, el sistema no se puede poner en marcha. Crearla con un INSERT a mano en producción dejaría una contraseña en el historial de la terminal. | Comando `python -m app.alta_inicial`: corre en el servidor, crea la cuenta de Coordinación en "pendiente de activación" con su invitación y muestra el token una vez. La contraseña la fija la persona con `POST /auth/register`, igual que cualquier otra cuenta. Queda en la bitácora. La semilla de desarrollo (`app/semilla.py`) sí crea su cuenta de Coordinación directo en la base, con la contraseña de `.env`; es solo para entornos locales y no sustituye a este comando. | `test_P_02_alta_inicial_de_coordinacion` |
+| P-01 | El gerente corporativo leía todo el expediente de los parques de su desarrollador: criterios, autoevaluaciones con comentarios, plan de trabajo con responsables, asignaciones e historial. | El SRS le da una vista de solo lectura del avance (2.3, RF-23). Los comentarios de autoevaluación y el plan describen huecos de seguridad del parque, que es justo lo que RNF-02 cuida. | El gerente queda con la ficha del parque, el cumplimiento y las fases. El resto del expediente usa el grupo `LECTURA_DETALLE = LECTURA_EXPEDIENTE - {GERENTE_DEL_DESARROLLADOR}` (`app/permisos.py:73`), que no lo incluye. | `test_P_01_gerente_solo_ve_el_avance_de_sus_parques` |
+| P-02 | Con todo protegido, crear un usuario exige una sesión de Coordinación, y no había manera de crear la primera. El agente lo señaló y dejó la semilla dependiendo de una cuenta que nadie podía crear. | Sin primera cuenta, el sistema no se puede poner en marcha. Crearla con un INSERT a mano en producción dejaría una contraseña en el historial de la terminal. | Comando `python -m app.alta_inicial` (`app/alta_inicial.py`): corre en el servidor, crea la cuenta de Coordinación en "pendiente de activación" con su invitación y muestra el token una vez. La contraseña la fija la persona con `POST /auth/register`, igual que cualquier otra cuenta. Queda en la bitácora. La semilla de desarrollo (`app/semilla.py`) sí crea su cuenta de Coordinación directo en la base, con la contraseña de `.env`; es solo para entornos locales y no sustituye a este comando. | `test_P_02_alta_inicial_de_coordinacion` |
 
 ### 2.3 Decisiones del agente que aceptamos
 
