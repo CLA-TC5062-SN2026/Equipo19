@@ -1,0 +1,96 @@
+@startuml secuencia_flujo2
+' SGPIS · S04-A2 · Flujo 2: subir evidencia, aceptarla y calificar el criterio
+' Contrato: openapi.yaml
+'   POST  /parques/{parque_id}/evidencias
+'   PATCH /evidencias/{evidencia_id}
+'   POST  /parques/{parque_id}/criterios/{criterio_id}/calificaciones
+' Criterios: RF-05-AC-1, AC-5, AC-8; RF-06-AC-1 a AC-5; RF-27-AC-1, AC-2, AC-3, AC-4, AC-7; RF-17-AC-1, AC-2; RF-35-AC-1
+
+title SGPIS · Flujo 2: subir evidencia, aceptarla y calificar el criterio
+
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+autonumber "<b>00"
+
+actor "APPI" as APPI
+actor "Consultor\nasignado" as CON
+participant "Cliente\n(Browser)" as B
+participant "Frontend\n(React SPA)" as FE
+participant "Backend API\n(FastAPI /api/v1)" as API
+database "Base de datos\n(PostgreSQL)" as DB
+participant "Almacenamiento\nde objetos" as OBJ
+
+== Parte A. La APPI sube evidencias (RF-05, RF-06, RF-27-AC-4 y AC-7) ==
+
+APPI -> B : Selecciona 4 fotos para el criterio 2.8\nen la fase "Implementación de estándares"
+B -> FE : Archivos seleccionados
+FE -> API : POST /parques/{parque_id}/evidencias\nmultipart: archivos[4], criterio_ids[2.8], fase
+activate API
+API -> DB : Valida sesión (RF-26) y rol APPI del parque (RNF-01)
+API -> DB : SELECT limite_tamano_archivo_mb FROM configuracion
+DB --> API : 100
+
+loop Por cada archivo
+  alt Video, formato fuera de la lista o tamaño > límite (RF-06)
+    API -> API : Agrega {nombre_archivo, motivo} a "rechazadas"
+  else Archivo válido
+    API -> OBJ : PUT objeto (clave aleatoria, cifrado en reposo)
+    OBJ --> API : referencia del objeto
+    API -> DB : BEGIN;\nINSERT documentos + versiones_documento (v1: nombre, tipo, tamaño,\nfecha, usuario, referencia; sin el archivo en PostgreSQL, RF-05-AC-5);\nINSERT evidencias (criterio 2.8, estado = enviada);\nUPDATE criterios_parque SET estado = en_revision\n  WHERE estado IN (pendiente, cumplido, no_cumplido);\nINSERT eventos_bitacora (accion=subir_evidencia, resultado=exitoso);\nCOMMIT
+  end
+end
+
+alt Ningún archivo pasó la validación
+  API --> FE : 422 (problem+json) con la lista "rechazadas"\n"El archivo supera el límite de 100 MB"
+else Al menos uno se guardó (RF-05-AC-8)
+  API --> FE : 201 Created\n{creadas: [3 evidencias en "enviada"],\n rechazadas: [{nombre_archivo, motivo}]}
+end
+deactivate API
+FE --> B : Progreso por archivo; marca el rechazado con su motivo
+
+== Parte B. El consultor acepta la evidencia (RF-27-AC-1) ==
+
+CON -> B : Revisa la evidencia del criterio 2.8
+B -> FE : Clic en "Aceptar"
+FE -> API : PATCH /evidencias/{evidencia_id}\n{estado: "aceptada"}
+activate API
+API -> DB : Valida que es el consultor asignado vigente del parque (RF-10)
+alt Usuario sin ese parque asignado o con rol APPI (RF-27-AC-5)
+  API -> DB : INSERT eventos_bitacora (resultado=denegado)
+  API --> FE : 403 Forbidden
+else Consultor asignado y evidencia en "enviada"
+  API -> DB : UPDATE evidencias SET estado = aceptada;\nINSERT eventos_bitacora (accion=aceptar_evidencia)
+  API --> FE : 200 OK Evidencia (estado: aceptada)
+end
+deactivate API
+
+== Parte C. El consultor califica el criterio (RF-27-AC-2, AC-3; RF-17) ==
+
+CON -> B : Marca el criterio como "cumplido"
+B -> FE : Envía la calificación
+FE -> API : POST /parques/{parque_id}/criterios/{criterio_id}/calificaciones\n{estado: "cumplido"}
+activate API
+API -> DB : SELECT estado del criterio, estándar y\nCOUNT(evidencias aceptadas vigentes)
+DB --> API : en_revision, estándar 2, 1 aceptada
+
+opt El criterio es de los estándares 2, 3 o 7 (RD-04)
+  API -> DB : SELECT revisión vigente de análisis de riesgos del ciclo actual
+  DB --> API : vigente (o ninguna)
+end
+
+alt Sin evidencia aceptada
+  API --> FE : 422 "Para calificar como cumplido el criterio necesita al menos una evidencia aceptada"
+else Estándar 2, 3 o 7 sin análisis de riesgos vigente (RF-17-AC-1)
+  API --> FE : 422 "No se puede calificar este criterio sin un análisis de riesgos vigente"
+else Precondiciones cumplidas (RF-17-AC-2)
+  API -> DB : BEGIN;\nINSERT calificaciones (anterior = en_revision, nuevo = cumplido, consultor, fecha);\nUPDATE criterios_parque SET estado = cumplido;\nINSERT eventos_bitacora (accion=calificar_criterio);\nCOMMIT
+  API --> FE : 201 Created Calificacion\n{estado_anterior: en_revision, estado_nuevo: cumplido, origen: consultor}
+end
+deactivate API
+FE -> API : GET /parques/{parque_id}/cumplimiento
+API -> DB : Cuenta O y R aplicables y cumplidos (RD-02)
+API --> FE : 200 OK {obligatorios, recomendados, avance_general}
+FE --> B : Actualiza el estado del criterio y las tres cifras (RF-08)
+
+@enduml

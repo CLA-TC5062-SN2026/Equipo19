@@ -1,0 +1,48 @@
+@startuml
+!include <C4/C4_Container>
+
+title SGPIS - Diagrama C4 de contenedores
+
+LAYOUT_LEFT_RIGHT()
+SHOW_LEGEND()
+
+Person(usuarios, "Usuarios del programa", "Coordinacion AMPIP, APPI, consultores, Director General y gerente corporativo. Usan un navegador web.")
+Person(admin_tecnico, "Administrador tecnico", "Mantiene la plataforma sin acceso al contenido de evidencias.")
+
+System_Boundary(sgpis, "SGPIS") {
+    Container(frontend, "Frontend web", "React + Vite", "SPA en espanol. Muestra formularios, tablas, graficas simples y progreso de cargas desde escritorio o movil.")
+    Container(backend, "Backend monolitico modular", "FastAPI / Python", "API REST. Aplica autenticacion, autorizacion por rol/parque/asignacion, reglas de negocio, bitacora, sesiones y trabajos en segundo plano.")
+    ContainerDb(db, "Base de datos transaccional", "PostgreSQL", "Usuarios, sesiones, parques, catalogo, expedientes, metadatos y versiones de evidencia, estados, dictamenes y bitacora de solo append.")
+}
+
+System_Ext(objetos, "Almacenamiento de objetos", "Proveedor unico con region en Mexico o Estados Unidos. Guarda archivos de evidencia cifrados y no publicos.")
+System_Ext(correo, "Proveedor de correo", "Canal para invitaciones y avisos; se selecciona antes del piloto.")
+
+Rel(usuarios, frontend, "Usa", "HTTPS")
+Rel(admin_tecnico, backend, "Administra la plataforma sin abrir evidencias", "HTTPS")
+Rel(frontend, backend, "Consume API", "HTTPS / REST / JSON")
+Rel(backend, db, "Consulta y persiste datos, sesiones y bitacora", "SQLAlchemy / SQL")
+Rel(backend, objetos, "Guarda archivos y referencias; genera acceso tras autorizar", "API de almacenamiento / URL firmada <= 5 min")
+Rel(frontend, objetos, "Descarga evidencia autorizada", "HTTPS mediante URL firmada")
+Rel(backend, correo, "Envia avisos y reintenta fallos", "SMTP o API por definir")
+
+note right of backend
+Decision documentada (ADR-001):
+una sola API desplegable, organizada
+internamente por modulos y capas.
+No representa microservicios.
+end note
+
+note bottom of objetos
+Documentado: archivos fuera de PostgreSQL,
+sin URL publica, cifrado y region fija
+(RNF-05 y RNF-15).
+Proveedor concreto: pendiente.
+end note
+
+note bottom of correo
+Documentado: correo y hasta tres reintentos
+(RNF-12).
+Proveedor concreto: pendiente.
+end note
+@enduml

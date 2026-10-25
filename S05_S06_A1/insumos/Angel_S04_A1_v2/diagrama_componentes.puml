@@ -1,0 +1,122 @@
+' SGPIS · S04-A1 · Diagramas de componentes (modelo C4)
+' Dos niveles en un solo archivo fuente:
+'   1. diagrama_componentes_contenedores  → C4 nivel 2 (Container): frontend, backend, base de datos y sus interfaces
+'   2. diagrama_componentes_backend       → C4 nivel 3 (Component): estructura interna del monolito modular
+' Estilo arquitectónico: monolito modular en capas (ADR-001, decision_arquitectonica.md)
+
+@startuml diagrama_componentes_contenedores
+!include <C4/C4_Container>
+
+title SGPIS · C4 nivel 2: contenedores
+
+LAYOUT_TOP_DOWN()
+SHOW_PERSON_OUTLINE()
+
+Person(coord, "Coordinación AMPIP\ny Director General", "Administra catálogo, parques y usuarios; consulta avance; firma dictámenes")
+Person(appi, "APPI", "Gerente y asistentes del parque; autoevaluación y carga de evidencias, a menudo desde el celular")
+Person(consultor, "Consultor", "Asignado a 3-6 parques o de comité; revisa evidencias, califica y emite Opiniones")
+Person(gerente, "Gerente corporativo", "Solo lectura del avance de los parques de su desarrollador")
+
+System_Boundary(sgpis, "SGPIS") {
+  Container(spa, "Aplicación web", "React 18, TypeScript, Vite", "SPA en el navegador (escritorio y móvil, RNF-09). Formularios, tablas y gráficas simples. Guarda el token solo en memoria.")
+  Container(proxy, "Proxy inverso", "Caddy 2", "Termina TLS 1.2+ (RNF-15), sirve los archivos estáticos de la SPA y reenvía /api/* al backend.")
+  Container(api, "Backend API", "Python 3.12, FastAPI, SQLAlchemy 2.0", "Monolito modular. Expone el contrato REST /api/v1 (openapi.yaml). Autentica, autoriza por rol y parque, aplica las reglas del SRS y escribe la bitácora.")
+  Container(worker, "Procesos programados", "Python 3.12, APScheduler (mismo código que la API)", "Revisión diaria de plazos a las 00:00 de Ciudad de México (RF-09, RF-30, RNF-11). Envía la cola de correos con 3 reintentos (RNF-12).")
+  ContainerDb(db, "Base de datos", "PostgreSQL 16", "Usuarios, sesiones, catálogo, expedientes, calificaciones, dictámenes, cola de correos y bitácora de solo append (RNF-03). Cifrado en reposo.")
+  ContainerDb(obj, "Almacenamiento de objetos", "Bucket compatible con S3", "Archivos de evidencias y documentos. Privado, cifrado en reposo, sin URL pública (RNF-15). PostgreSQL guarda solo la referencia (2.4, RF-05-AC-5).")
+}
+
+System_Ext(correo, "Proveedor de correo", "SMTP con TLS. Invitaciones, notificaciones de observación y recuperación de contraseña (RNF-12).")
+System_Ext(monitor, "Monitoreo externo", "Consulta /health cada 5 minutos y mide la disponibilidad mensual (RNF-08).")
+
+Rel(coord, spa, "Usa", "HTTPS")
+Rel(appi, spa, "Usa", "HTTPS")
+Rel(consultor, spa, "Usa", "HTTPS")
+Rel(gerente, spa, "Usa", "HTTPS")
+
+Rel(spa, proxy, "Llama a la API", "JSON/HTTPS, REST /api/v1, Authorization: Bearer <JWT>")
+Rel(proxy, api, "Reenvía /api/*", "HTTP interno :8000")
+Rel(spa, obj, "Descarga archivos con URL firmada", "HTTPS GET, vigencia ≤ 5 min")
+
+Rel(api, db, "Lee y escribe", "SQL sobre TLS, :5432")
+Rel(api, obj, "Sube objetos y firma URLs de descarga", "API S3 sobre HTTPS")
+Rel(worker, db, "Marca atrasos y lee la cola de correos", "SQL sobre TLS, :5432")
+Rel(worker, correo, "Envía correos", "SMTP con TLS, :587")
+Rel(monitor, proxy, "GET /api/v1/health", "HTTPS")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml diagrama_componentes_backend
+!include <C4/C4_Component>
+
+title SGPIS · C4 nivel 3: componentes del Backend API
+
+LAYOUT_TOP_DOWN()
+
+Container(spa, "Aplicación web", "React, TypeScript", "Cliente del contrato /api/v1")
+ContainerDb(db, "Base de datos", "PostgreSQL 16")
+ContainerDb(obj, "Almacenamiento de objetos", "Compatible con S3")
+
+Container_Boundary(api, "Backend API (FastAPI)") {
+
+  Component(routers, "Routers HTTP por módulo", "FastAPI APIRouter", "Uno por módulo: sesiones, usuarios, catálogo, parques, expediente, análisis de riesgos, dictaminación, reportes, bitácora y configuración. Solo traducen HTTP a llamadas de servicio; no tienen reglas de negocio.")
+
+  Component(seguridad, "Seguridad", "Dependencias de FastAPI", "sesion_actual: valida el JWT y la sesión en servidor (60 min de inactividad, revocación). requiere_rol: rol y alcance de parque, 401/403 (RNF-01). Sin estado propio.")
+  Component(errores, "Manejador de errores", "Exception handlers", "Traduce excepciones de dominio a application/problem+json con el mensaje exacto del SRS. Un 500 nunca expone la traza.")
+
+  Component(svc_acceso, "Módulo Identidad y acceso", "Servicio", "Inicio de sesión con argon2, bloqueo 5×15 min, recuperación, alta y baja de usuarios y roles (RF-03, RF-26, RF-29, RF-34).")
+  Component(svc_programa, "Módulo Programa", "Servicio", "Catálogo y versiones, generaciones, parques, tipo de PI y su recálculo, fases y asignación de consultores (RF-01, RF-02, RF-10, RF-11, RF-28, RF-30 a RF-32).")
+  Component(svc_expediente, "Módulo Expediente", "Servicio", "Autoevaluación, evidencias y versiones, máquina de estados de evidencia y criterio, plan de trabajo, análisis de riesgos (RF-04 a RF-07, RF-09, RF-16, RF-17, RF-27, RF-36).")
+  Component(svc_dictamen, "Módulo Dictaminación", "Servicio", "Opiniones, Evaluación de Desempeño, sesión de comité y dictamen con la validación de RD-09 (RF-12 a RF-15, RF-33).")
+  Component(cumplimiento, "Motor de cumplimiento", "Funciones puras de dominio", "Calcula obligatorios, recomendados y avance general con RD-02. Sin acceso a base: recibe criterios y devuelve cifras. Lo usan Expediente, Dictaminación y Reportes.")
+  Component(svc_reportes, "Módulo Reportes y bitácora", "Servicio de solo lectura", "Reporte mensual (RF-21), vista consolidada (RF-23), historial (RF-31) y consulta de bitácora (RF-35).")
+
+  Component(bitacora, "Registro de bitácora", "registrar_evento()", "Único punto que escribe eventos. Lo llaman todos los servicios y la seguridad en cada 403 (RF-35-AC-2).")
+  Component(validador, "Validador de archivos", "Servicio de dominio", "Tamaño contra la configuración vigente, lista cerrada de formatos y rechazo de video (RF-06).")
+  Component(puerto_alm, "Puerto de almacenamiento", "Interfaz + adaptador S3 (boto3) / MinIO en desarrollo", "guardar(), url_firmada(ttl ≤ 5 min). Las pruebas usan una implementación en memoria.")
+  Component(outbox, "Cola de correos (outbox)", "Tabla + repositorio", "Los servicios encolan avisos en la misma transacción que el cambio; el proceso programado los envía con reintentos (RNF-12).")
+  Component(reloj, "Reloj", "Interfaz inyectable", "Hora de America/Mexico_City (RNF-11). Las pruebas lo simulan para los 15 y 60 minutos y los plazos diarios.")
+  Component(repos, "Repositorios", "SQLAlchemy 2.0, sesión por solicitud", "Acceso a datos por agregado. Migraciones con Alembic.")
+}
+
+Rel(spa, routers, "JSON/HTTPS", "/api/v1")
+Rel(routers, seguridad, "Depends()")
+Rel(routers, svc_acceso, "Llama")
+Rel(routers, svc_programa, "Llama")
+Rel(routers, svc_expediente, "Llama")
+Rel(routers, svc_dictamen, "Llama")
+Rel(routers, svc_reportes, "Llama")
+Rel_L(routers, errores, "Excepciones de dominio")
+
+Rel(svc_expediente, validador, "Valida cada archivo")
+Rel(svc_expediente, puerto_alm, "Guarda y firma URLs")
+Rel(svc_expediente, cumplimiento, "Cifras para el expediente")
+Rel(svc_dictamen, cumplimiento, "100 % de obligatorios (RD-09)")
+Rel(svc_reportes, cumplimiento, "Cifras por parque")
+
+Rel(svc_acceso, bitacora, "Registra")
+Rel(svc_programa, bitacora, "Registra")
+Rel(svc_expediente, bitacora, "Registra")
+Rel(svc_dictamen, bitacora, "Registra")
+Rel(seguridad, bitacora, "Registra cada 403")
+
+Rel(svc_acceso, outbox, "Encola invitación y recuperación")
+Rel(svc_expediente, outbox, "Encola aviso de observación")
+
+Rel(svc_acceso, reloj, "Bloqueo e inactividad")
+Rel(svc_expediente, reloj, "Plazos")
+
+Rel(svc_acceso, repos, "Usa")
+Rel(svc_programa, repos, "Usa")
+Rel(svc_expediente, repos, "Usa")
+Rel(svc_dictamen, repos, "Usa")
+Rel(svc_reportes, repos, "Usa")
+Rel(bitacora, repos, "INSERT (sin UPDATE ni DELETE)")
+Rel(outbox, repos, "Usa")
+
+Rel(repos, db, "SQL sobre TLS")
+Rel(puerto_alm, obj, "API S3")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,59 @@
+@startuml
+!include <C4/C4_Deployment>
+
+title SGPIS - Propuesta de despliegue C4
+
+LAYOUT_TOP_DOWN()
+SHOW_LEGEND()
+
+Person(usuarios, "Usuarios del programa", "Acceden desde Chrome o Safari en equipo de escritorio o movil.")
+
+Deployment_Node(cliente, "Dispositivo del usuario", "Navegador web", "Entorno del usuario") {
+    Container(spa, "Frontend SGPIS", "React + Vite compilado", "Se ejecuta en el navegador.")
+}
+
+Deployment_Node(cloud, "Proveedor cloud por definir", "Propuesta nueva", "Una region compatible con el SRS y una operacion simple para una persona.") {
+    Deployment_Node(servidor, "Servidor cloud", "VM o servicio de contenedores", "Propuesta: una unidad operativa para el monolito.") {
+        Deployment_Node(compose, "Docker Compose", "Propuesta para produccion", "Docker Compose esta documentado para desarrollo; su uso en produccion requiere validacion.") {
+            Container(proxy, "Servidor web / proxy inverso", "Por definir", "Entrega los archivos estaticos y termina HTTPS.")
+            Container(api, "Backend SGPIS", "FastAPI / Python", "Una instancia del monolito modular por capas.")
+            ContainerDb(db, "PostgreSQL", "PostgreSQL 16", "Datos transaccionales, sesiones y bitacora de solo append.")
+        }
+    }
+}
+
+Deployment_Node(storage_region, "Almacenamiento de objetos", "Proveedor unico; region Mexico o Estados Unidos", "Requerido por RNF-05 y RNF-15. Proveedor concreto pendiente.") {
+    ContainerDb(objetos, "Objetos de evidencia", "Almacenamiento de objetos", "Archivos cifrados, sin acceso publico.")
+}
+
+System_Ext(monitoreo, "Monitoreo externo", "Propuesta necesaria para medir disponibilidad mensual de RNF-08.")
+System_Ext(correo, "Proveedor de correo", "Pendiente de seleccionar antes del piloto.")
+
+Rel(usuarios, spa, "Usa", "HTTPS")
+Rel(spa, proxy, "Solicita aplicacion y API", "HTTPS")
+Rel(proxy, api, "Reenvia solicitudes API", "HTTP interno / propuesta")
+Rel(api, db, "Lee y escribe datos", "SQL")
+Rel(api, objetos, "Guarda evidencia; autoriza acceso y emite URL firmada", "HTTPS / API de almacenamiento")
+Rel(spa, objetos, "Descarga evidencia autorizada", "HTTPS / URL firmada <= 5 min")
+Rel(api, correo, "Envia avisos y reintenta", "SMTP o API por definir")
+Rel(monitoreo, proxy, "Consulta disponibilidad", "HTTPS / health check cada 5 min")
+
+note right of compose
+Propuesta, no decision del ADR:
+contenedores Docker para produccion,
+proxy inverso y una sola unidad cloud.
+El Sprint 1 documenta Docker Compose
+con PostgreSQL 16 para desarrollo local.
+end note
+
+note bottom of db
+RNF-13 exige respaldo diario y
+retencion de 30 dias. El mecanismo
+concreto debe definirse con el proveedor.
+end note
+
+note bottom of objetos
+RNF-13 exige respaldo diario y RNF-14
+define la retencion de evidencias.
+end note
+@enduml

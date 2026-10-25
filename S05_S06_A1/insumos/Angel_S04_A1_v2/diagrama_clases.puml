@@ -1,0 +1,357 @@
+@startuml diagrama_clases
+' SGPIS · S04-A1 · Diagrama de clases del dominio
+' Fuente: SRS_equipo.md v2.0 (glosario 1.3, RF, RD). Versión revisada sobre la propuesta del agente
+' (evidencia_agente/diagrama_clases_agente.puml); las decisiones están en decision_arquitectonica.md, sección 5.
+' El archivo genera dos imágenes: diagrama_clases (entidades y relaciones) y diagrama_clases_enumeraciones.
+' Convenciones: ◆ composición (la parte no existe sin el todo), ◇ agregación (la parte se comparte),
+' flecha simple = asociación navegable. Multiplicidades en ambos extremos.
+
+title SGPIS · Diagrama de clases del dominio
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam nodesep 25
+skinparam ranksep 45
+hide empty methods
+
+' ───────────── Identidad y acceso ─────────────
+package "Identidad y acceso" {
+  class Usuario {
+    id: UUID
+    nombre: String
+    correo: String
+    hashContrasena: String
+    estado: EstadoUsuario
+    intentosFallidos: int
+    bloqueadoHasta: DateTime [0..1]
+    creadoEn: DateTime
+  }
+  class RolAsignado {
+    rol: Rol
+  }
+  class Sesion {
+    id: UUID
+    creadaEn: DateTime
+    ultimoUso: DateTime
+    revocada: bool
+  }
+  class TokenUnUso {
+    tipo: TipoToken
+    hashToken: String
+    expiraEn: DateTime
+    usadoEn: DateTime [0..1]
+  }
+}
+
+' ───────────── Catálogo ─────────────
+package "Catálogo" {
+  class VersionCatalogo {
+    id: UUID
+    nombre: String
+    vigente: bool
+    cargadaEn: DateTime
+  }
+  class Estandar {
+    numero: int {1..10}
+    nombre: String
+  }
+  class Subestandar {
+    clave: String
+    nombre: String
+  }
+  class Criterio {
+    id: UUID
+    clave: String
+    descripcion: String
+    metodoVerificacion: String
+    evidenciaSuficiente: String [0..1]
+  }
+  class MarcaCriterio {
+    tipoPI: TipoPI
+    marca: Marca
+  }
+}
+
+' ───────────── Programa ─────────────
+package "Programa" {
+  class Desarrollador {
+    id: UUID
+    nombre: String
+  }
+  class Generacion {
+    id: UUID
+    nombre: String
+    fechaInicio: Date
+  }
+  class Parque {
+    id: UUID
+    nombre: String
+    region: Region
+    estado: EstadoParque
+    fechaAlta: Date
+    fechaTerminoPrograma: Date [0..1]
+    fechaProximaActualizacion: Date [0..1]
+    fechaUltimoDictamen: Date [0..1]
+    atrasado: bool
+  }
+  class PeriodoTipoPI {
+    tipoPI: TipoPI
+    fechaDesde: Date
+    fechaHasta: Date [0..1]
+    motivo: String
+    cumplimientoObligatoriosAlCierre: decimal [0..1]
+  }
+  class ActualizacionAnual {
+    fecha: Date
+    siguienteActualizacion: Date
+  }
+  class Expediente <<raíz de agregado>> {
+    id: UUID
+    abiertoEn: Date
+    cerradoEn: Date [0..1]
+  }
+  class AsignacionConsultor {
+    desde: DateTime
+    hasta: DateTime [0..1]
+  }
+  class DefinicionFase {
+    clave: String
+    nombre: String
+    orden: int
+  }
+  class FaseExpediente {
+    estado: EstadoFase
+    motivoExcepcion: String [0..1]
+    cerradaEn: DateTime [0..1]
+  }
+}
+
+' ───────────── Evaluación del expediente ─────────────
+package "Evaluación" {
+  class CriterioExpediente {
+    marca: Marca {O, R}
+    estado: EstadoCalificacion
+    actualizadoEn: DateTime [0..1]
+  }
+  class Calificacion {
+    estadoAnterior: EstadoCalificacion
+    estadoNuevo: EstadoCalificacion
+    motivo: String [0..1]
+    origen: OrigenCambio
+    registradaEn: DateTime
+  }
+  class Autoevaluacion {
+    respuesta: RespuestaAutoevaluacion
+    comentario: String [0..1]
+    actualizadaEn: DateTime
+  }
+  class Compromiso {
+    fechaComprometida: Date
+    atrasado: bool
+  }
+  class Recomendacion {
+    texto: String
+    creadaEn: DateTime
+  }
+  class Evidencia {
+    id: UUID
+    estado: EstadoEvidencia
+    esAdministrativa: bool
+    eliminadaEn: DateTime [0..1]
+  }
+  class VersionEvidencia {
+    numero: int
+    cargadaEn: DateTime
+    vigente: bool
+  }
+  class Observacion {
+    texto: String
+    creadaEn: DateTime
+  }
+  class ArchivoAlmacenado {
+    id: UUID
+    claveObjeto: String
+    nombreOriginal: String
+    tipoMime: String
+    tamanoBytes: long
+    sha256: String
+  }
+  class RevisionAnalisisRiesgos {
+    fechaRevision: Date
+    versionDocumento: String
+    firmadoPor: String
+    resumen: String
+    vigente: bool
+  }
+}
+
+' ───────────── Dictaminación ─────────────
+package "Dictaminación" {
+  class OpinionCumplimiento {
+    tipo: TipoOpinion
+    favorable: bool [0..1]
+    cumplimientoObligatorios: decimal
+    avanceGeneral: decimal
+    emitidaEn: DateTime
+  }
+  class EvaluacionDesempeno {
+    folio: String
+    fecha: Date
+    resultado: String
+  }
+  class SesionComite {
+    estado: EstadoSesionComite
+    abiertaEn: DateTime
+    cerradaEn: DateTime [0..1]
+  }
+  class Dictamen {
+    resultado: ResultadoDictamen
+    motivo: String
+    estado: EstadoDictamen
+    capturadoEn: DateTime
+    firmadoEn: DateTime [0..1]
+    vigenciaHasta: Date [0..1]
+  }
+}
+
+' ───────────── Transversal ─────────────
+package "Transversal" {
+  class EventoBitacora <<solo append>> {
+    fechaHora: DateTime
+    usuarioId: UUID [0..1]
+    rol: Rol [0..1]
+    parqueId: UUID [0..1]
+    accion: AccionBitacora
+    recursoTipo: String
+    recursoId: String [0..1]
+    resultado: ResultadoEvento
+  }
+  class Configuracion <<única>> {
+    limiteTamanoArchivoMb: int {1..100}
+    vigenciaDistintivoAnios: int
+  }
+}
+
+' ───────────── Relaciones: identidad ─────────────
+Usuario "1" *-- "1..*" RolAsignado : tiene >
+RolAsignado "0..*" --> "0..1" Parque : alcance APPI >
+RolAsignado "0..*" --> "0..1" Desarrollador : alcance gerente >
+Usuario "1" *-- "0..*" Sesion
+Usuario "1" *-- "0..*" TokenUnUso
+
+' ───────────── Relaciones: catálogo ─────────────
+VersionCatalogo "1" *-- "10" Estandar
+Estandar "1" *-- "1..*" Subestandar
+Subestandar "1" *-- "1..*" Criterio
+Criterio "1" *-- "4" MarcaCriterio : una por tipo de PI >
+
+' ───────────── Relaciones: programa ─────────────
+Generacion "0..*" --> "1" VersionCatalogo : se evalúa contra >
+Parque "0..*" --> "0..1" Desarrollador : pertenece a >
+Parque "0..1" --> "0..1" Usuario : contacto principal >
+Parque "1" *-- "0..*" PeriodoTipoPI : historial de tipo >
+Parque "1" *-- "0..*" ActualizacionAnual
+Parque "1" *-- "0..*" Expediente : uno por generación cursada >
+Expediente "0..*" --> "1" Generacion
+Expediente "1" *-- "0..*" AsignacionConsultor
+AsignacionConsultor "0..*" --> "1" Usuario : consultor >
+Expediente "1" *-- "1..*" FaseExpediente
+FaseExpediente "0..*" --> "1" DefinicionFase
+
+' ───────────── Relaciones: evaluación ─────────────
+Expediente "1" *-- "0..*" CriterioExpediente : solo O y R aplicables >
+CriterioExpediente "0..*" --> "1" Criterio
+CriterioExpediente "1" *-- "0..*" Calificacion : historial >
+Calificacion "0..*" --> "0..1" Usuario : registró >
+CriterioExpediente "1" *-- "0..1" Autoevaluacion
+CriterioExpediente "1" *-- "0..1" Compromiso
+Compromiso "0..*" --> "1" Usuario : responsable APPI >
+CriterioExpediente "1" *-- "0..*" Recomendacion
+CriterioExpediente "1" *-- "0..*" Evidencia : vínculo con el criterio >
+Evidencia "1" *-- "1..*" VersionEvidencia
+Evidencia "0..*" --> "1" DefinicionFase : fase en que se entregó >
+VersionEvidencia "0..*" o-- "1" ArchivoAlmacenado : comparte archivo >
+VersionEvidencia "1" *-- "0..*" Observacion
+Expediente "1" *-- "0..*" RevisionAnalisisRiesgos
+RevisionAnalisisRiesgos "0..1" o-- "0..1" ArchivoAlmacenado : documento opcional >
+
+' ───────────── Relaciones: dictaminación ─────────────
+Expediente "1" *-- "0..2" OpinionCumplimiento : intermedia y final >
+Expediente "1" *-- "0..1" EvaluacionDesempeno
+EvaluacionDesempeno "0..1" o-- "0..1" ArchivoAlmacenado
+Expediente "1" *-- "0..*" SesionComite
+SesionComite "0..*" --> "1" Usuario : consultor de comité >
+Expediente "1" *-- "0..*" Dictamen
+Dictamen "0..*" --> "1" Usuario : capturó >
+Dictamen "0..*" --> "0..1" Usuario : firmó >
+
+@enduml
+
+@startuml diagrama_clases_enumeraciones
+title SGPIS · Enumeraciones del dominio
+skinparam shadowing false
+skinparam packageStyle rectangle
+hide empty methods
+
+' ───────────── Enumeraciones ─────────────
+package "Enumeraciones" {
+  enum Rol {
+    COORDINACION_AMPIP
+    DIRECTOR_GENERAL
+    APPI
+    CONSULTOR
+    GERENTE_CORPORATIVO
+    ADMINISTRADOR_TECNICO
+  }
+  enum TipoPI {
+    CONSTRUCCION_ABIERTO
+    CONSTRUCCION_CERRADO
+    OPERACION_ABIERTO
+    OPERACION_CERRADO
+  }
+  enum Marca {
+    O
+    R
+    NA
+  }
+  enum EstadoCalificacion {
+    PENDIENTE
+    EN_REVISION
+    CUMPLIDO
+    NO_CUMPLIDO
+  }
+  enum EstadoEvidencia {
+    ENVIADA
+    OBSERVADA
+    ACEPTADA
+    ELIMINADA
+  }
+  enum EstadoFase {
+    PENDIENTE
+    EN_PROCESO
+    COMPLETADA
+    AVANZADA_POR_EXCEPCION
+  }
+  enum ResultadoDictamen {
+    OTORGAR
+    NO_OTORGAR
+  }
+  enum EstadoDictamen {
+    BORRADOR
+    FIRMADO
+  }
+  enum TipoOpinion {
+    INTERMEDIA
+    FINAL
+  }
+  enum EstadoParque {
+    ACTIVO
+    INACTIVO
+    HISTORICO
+  }
+}
+
+note "Region (32 estados), EstadoUsuario, TipoToken,\nRespuestaAutoevaluacion, OrigenCambio, EstadoSesionComite,\nAccionBitacora y ResultadoEvento son enums con los valores\nde openapi.yaml; se omiten para no saturar el diagrama." as N_ENUMS
+
+@enduml

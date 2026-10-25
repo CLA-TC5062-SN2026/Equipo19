@@ -1,0 +1,490 @@
+openapi: 3.0.3
+info:
+  title: SGPIS API
+  version: 1.0.0
+  description: >-
+    API REST del Sistema de Gestion del Programa Parque Industrial Seguro. Las
+    autorizaciones por rol, parque y asignacion se aplican en el servidor. Las
+    operaciones se identifican por alcance en x-scope; los procesos diarios se
+    documentan en x-background-processes y no se exponen como endpoints.
+x-scope:
+  mvp: [RF-01, RF-02, RF-03, RF-04, RF-05, RF-06, RF-07, RF-08, RF-09, RF-10, RF-16, RF-17, RF-25, RF-26, RF-27, RF-28, RF-29, RF-30, RF-31, RF-32, RF-34, RF-35]
+  2027: [RF-11, RF-12, RF-13, RF-14, RF-15, RF-21, RF-23, RF-24, RF-33, RF-36]
+  posterior: [RF-18, RF-19, RF-20, RF-22, RF-37, RF-38, RF-39]
+x-background-processes:
+  - name: revision-diaria-atrasos
+    schedule: Diario, America/Mexico_City
+    description: Marca un criterio como atrasado solo tras vencer su fecha comprometida y mientras no este cumplido. Marca el parque como atrasado si vence fechaProximaActualizacion; al registrar fechaActualizacion calcula la siguiente fecha un ano despues.
+    x-acceptance-criteria: [RF-09-AC-2, RF-09-AC-3, RF-30-AC-2, RF-30-AC-3]
+  - name: avisos-vencimiento-y-auditoria
+    schedule: Diario, America/Mexico_City
+    x-acceptance-criteria: [RF-19-AC-1, RF-19-AC-2, RF-19-AC-3, RF-19-AC-4, RF-19-AC-5, RF-20-AC-1, RF-20-AC-2, RF-38-AC-2, RF-39-AC-1, RF-39-AC-2]
+servers:
+  - url: https://api.sgpis.example.com/api/v1
+    description: Produccion
+tags:
+  - name: Autenticacion
+  - name: Usuarios
+  - name: Catalogo
+  - name: Generaciones
+  - name: Parques
+  - name: Expedientes
+  - name: Evidencias
+  - name: Cumplimiento
+  - name: Comite y dictamen
+  - name: Reportes y bitacora
+security:
+  - bearerAuth: []
+paths:
+  /auth/sesiones:
+    post:
+      tags: [Autenticacion]
+      summary: Iniciar sesion
+      security: []
+      x-acceptance-criteria: [RF-26-AC-1, RF-26-AC-2, RF-26-AC-3]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
+      responses:
+        '200': {description: Sesion creada, content: {application/json: {schema: {$ref: '#/components/schemas/Token'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /auth/sesiones/actual:
+    delete:
+      tags: [Autenticacion]
+      summary: Cerrar la sesion actual
+      x-acceptance-criteria: [RF-26-AC-5, RF-26-AC-6]
+      responses: {'204': {description: Token invalidado}, '401': {$ref: '#/components/responses/Unauthorized'}}
+  /auth/recuperaciones-contrasena:
+    post:
+      tags: [Autenticacion]
+      summary: Solicitar enlace de recuperacion de un solo uso
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EmailRequest'}}}}
+      responses: {'202': {description: Solicitud procesada}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /auth/recuperaciones-contrasena/{token}:
+    post:
+      tags: [Autenticacion]
+      summary: Establecer una nueva contrasena con un token de un solo uso
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      parameters: [{name: token, in: path, required: true, schema: {type: string, minLength: 1}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordResetConfirm'}}}}
+      responses: {'204': {description: Contrasena actualizada y token invalidado}, '400': {$ref: '#/components/responses/BadRequest'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /usuarios:
+    post:
+      tags: [Usuarios]
+      summary: Dar de alta un usuario y su rol
+      x-acceptance-criteria: [RF-03-AC-1, RF-03-AC-2, RF-03-AC-3]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UserCreate'}}}}
+      responses: {'201': {description: Usuario pendiente de activacion, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /usuarios/{usuarioId}:
+    patch:
+      tags: [Usuarios]
+      summary: Actualizar estado o asignaciones de usuario
+      x-acceptance-criteria: [RF-29-AC-1, RF-29-AC-2]
+      parameters: [{$ref: '#/components/parameters/UserId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UserPatch'}}}}
+      responses: {'200': {description: Usuario actualizado, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /catalogo/versiones:
+    post:
+      tags: [Catalogo]
+      summary: Cargar una version de catalogo mediante CSV
+      x-acceptance-criteria: [RF-01-AC-1, RF-01-AC-2, RF-01-AC-4, RF-01-AC-5]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {$ref: '#/components/schemas/CatalogUpload'}}}}
+      responses: {'201': {description: Version creada, content: {application/json: {schema: {$ref: '#/components/schemas/CatalogVersion'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /catalogo/exportar:
+    get:
+      tags: [Catalogo]
+      summary: Descargar el archivo maestro del catalogo
+      x-acceptance-criteria: [RF-25-AC-2, RF-25-AC-3, RF-25-AC-4]
+      responses: {'200': {description: CSV maestro, content: {text/csv: {schema: {type: string, format: binary}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /catalogo/criterios/{criterioId}:
+    get:
+      tags: [Catalogo]
+      summary: Consultar un criterio aplicable
+      x-acceptance-criteria: [RF-24-AC-1, RF-25-AC-1]
+      parameters: [{$ref: '#/components/parameters/CriterionId'}]
+      responses: {'200': {description: Criterio, content: {application/json: {schema: {$ref: '#/components/schemas/Criterion'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+    patch:
+      tags: [Catalogo]
+      summary: Definir evidencia suficiente para un criterio
+      x-acceptance-criteria: [RF-24-AC-1, RF-24-AC-2]
+      parameters: [{$ref: '#/components/parameters/CriterionId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CriterionPatch'}}}}
+      responses: {'200': {description: Criterio actualizado, content: {application/json: {schema: {$ref: '#/components/schemas/Criterion'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /generaciones:
+    post:
+      tags: [Generaciones]
+      summary: Crear una generacion con su catalogo
+      x-acceptance-criteria: [RF-28-AC-1, RF-28-AC-2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GenerationCreate'}}}}
+      responses: {'201': {description: Generacion creada, content: {application/json: {schema: {$ref: '#/components/schemas/Generation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques:
+    get:
+      tags: [Parques]
+      summary: Listar parques visibles al solicitante
+      x-acceptance-criteria: [RF-23-AC-1, RF-31-AC-3]
+      parameters: [{$ref: '#/components/parameters/GenerationQuery'}, {$ref: '#/components/parameters/DeveloperQuery'}]
+      responses: {'200': {description: Parques, content: {application/json: {schema: {$ref: '#/components/schemas/ParkList'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+    post:
+      tags: [Parques]
+      summary: Dar de alta un parque activo o historico
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-3, RF-28-AC-3, RF-31-AC-2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ParkCreate'}}}}
+      responses: {'201': {description: Parque creado, content: {application/json: {schema: {$ref: '#/components/schemas/Park'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}:
+    get:
+      tags: [Parques]
+      summary: Consultar parque e historial del programa
+      x-acceptance-criteria: [RF-01-AC-3, RF-31-AC-1]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      responses: {'200': {description: Parque, content: {application/json: {schema: {$ref: '#/components/schemas/Park'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+    patch:
+      tags: [Parques]
+      summary: Actualizar tipo, estado o fechas del programa
+      x-acceptance-criteria: [RF-11-AC-1, RF-11-AC-2, RF-11-AC-3, RF-11-AC-4, RF-11-AC-5, RF-11-AC-6, RF-29-AC-3, RF-30-AC-1]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ParkPatch'}}}}
+      responses: {'200': {description: Parque actualizado, content: {application/json: {schema: {$ref: '#/components/schemas/Park'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/usuarios-appi:
+    get:
+      tags: [Parques, Usuarios]
+      summary: Listar usuarios APPI y el contacto principal
+      x-acceptance-criteria: [RF-34-AC-1, RF-34-AC-3]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      responses: {'200': {description: Vinculos APPI, content: {application/json: {schema: {$ref: '#/components/schemas/AppiLinkList'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /parques/{parqueId}/usuarios-appi/{usuarioId}:
+    patch:
+      tags: [Parques, Usuarios]
+      summary: Marcar el contacto principal APPI
+      x-acceptance-criteria: [RF-34-AC-2]
+      parameters: [{$ref: '#/components/parameters/ParkId'}, {$ref: '#/components/parameters/UserId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppiLinkPatch'}}}}
+      responses: {'200': {description: Vinculo actualizado, content: {application/json: {schema: {$ref: '#/components/schemas/AppiLink'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /parques/{parqueId}/asignacion-consultor:
+    put:
+      tags: [Parques]
+      summary: Asignar o reasignar el consultor vigente
+      x-acceptance-criteria: [RF-10-AC-1, RF-10-AC-2, RF-10-AC-3]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConsultantAssignmentRequest'}}}}
+      responses: {'200': {description: Asignacion vigente, content: {application/json: {schema: {$ref: '#/components/schemas/ConsultantAssignment'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/expediente:
+    get:
+      tags: [Expedientes]
+      summary: Consultar expediente y avance sin exponer evidencia restringida
+      x-acceptance-criteria: [RF-07-AC-1, RF-07-AC-2, RF-08-AC-1, RF-08-AC-2, RF-08-AC-3, RF-08-AC-4, RF-08-AC-5, RF-32-AC-1, RF-32-AC-2]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      responses: {'200': {description: Expediente, content: {application/json: {schema: {$ref: '#/components/schemas/CaseFile'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /parques/{parqueId}/autoevaluaciones:
+    get:
+      tags: [Expedientes]
+      summary: Consultar criterios O y R aplicables a la autoevaluacion
+      x-acceptance-criteria: [RF-04-AC-1]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      responses: {'200': {description: Criterios aplicables, content: {application/json: {schema: {$ref: '#/components/schemas/CriterionEvaluationList'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /autoevaluaciones:
+    post:
+      tags: [Expedientes]
+      summary: Registrar autoevaluacion de un criterio aplicable
+      x-acceptance-criteria: [RF-04-AC-2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SelfAssessmentCreate'}}}}
+      responses: {'201': {description: Autoevaluacion registrada, content: {application/json: {schema: {$ref: '#/components/schemas/CriterionEvaluation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/fases/{faseId}/cierre:
+    post:
+      tags: [Expedientes]
+      summary: Cerrar una fase del expediente
+      description: Repetir la solicitud cuando la fase ya esta completada devuelve su estado actual sin crear una transicion ni evento de bitacora adicional.
+      x-idempotency: La operacion es idempotente por estado de fase.
+      x-acceptance-criteria: [RF-32-AC-3]
+      parameters: [{$ref: '#/components/parameters/ParkId'}, {$ref: '#/components/parameters/PhaseId'}]
+      responses: {'200': {description: Fase cerrada, content: {application/json: {schema: {$ref: '#/components/schemas/CasePhase'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /parques/{parqueId}/fases/avance-excepcion:
+    post:
+      tags: [Expedientes]
+      summary: Avanzar fase por excepcion con motivo
+      description: Repetir la misma solicitud tras el avance devuelve el estado actual sin crear un segundo avance ni evento de bitacora.
+      x-idempotency: La operacion es idempotente por estado de fase y destino.
+      x-acceptance-criteria: [RF-32-AC-4, RF-32-AC-5]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PhaseExceptionCreate'}}}}
+      responses: {'200': {description: Fase avanzada, content: {application/json: {schema: {$ref: '#/components/schemas/CasePhase'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/analisis-riesgos:
+    post:
+      tags: [Expedientes]
+      summary: Registrar revision del analisis de riesgos
+      x-acceptance-criteria: [RF-16-AC-1, RF-16-AC-4]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {$ref: '#/components/schemas/RiskReviewCreate'}}}}
+      responses: {'201': {description: Revision creada, content: {application/json: {schema: {$ref: '#/components/schemas/RiskReview'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/planes-trabajo:
+    post:
+      tags: [Expedientes]
+      summary: Crear plan de trabajo para un criterio
+      x-acceptance-criteria: [RF-09-AC-1, RF-09-AC-4]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkPlanCreate'}}}}
+      responses: {'201': {description: Plan creado, content: {application/json: {schema: {$ref: '#/components/schemas/WorkPlan'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/opiniones-cumplimiento:
+    post:
+      tags: [Cumplimiento]
+      summary: Emitir opinion intermedia o final
+      x-acceptance-criteria: [RF-12-AC-1, RF-12-AC-2, RF-12-AC-3, RF-12-AC-4, RF-12-AC-5, RF-12-AC-6]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OpinionCreate'}}}}
+      responses: {'201': {description: Opinion emitida, content: {application/json: {schema: {$ref: '#/components/schemas/Opinion'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/evaluaciones-desempeno:
+    post:
+      tags: [Cumplimiento]
+      summary: Registrar Evaluacion de Desempeno
+      x-acceptance-criteria: [RF-33-AC-1, RF-33-AC-2, RF-33-AC-3]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {$ref: '#/components/schemas/PerformanceEvaluationCreate'}}}}
+      responses: {'201': {description: Evaluacion registrada, content: {application/json: {schema: {$ref: '#/components/schemas/PerformanceEvaluation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /parques/{parqueId}/sesiones-comite:
+    post:
+      tags: [Comite y dictamen]
+      summary: Abrir sesion y otorgar acceso temporal al consultor de comite
+      x-acceptance-criteria: [RF-13-AC-1, RF-13-AC-2, RF-13-AC-3, RF-15-AC-1, RF-15-AC-2, RF-15-AC-3]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommitteeSessionCreate'}}}}
+      responses: {'201': {description: Sesion abierta, content: {application/json: {schema: {$ref: '#/components/schemas/CommitteeSession'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /sesiones-comite/{sesionId}:
+    delete:
+      tags: [Comite y dictamen]
+      summary: Cerrar una sesion de comite y retirar acceso temporal
+      description: Solo Coordinacion AMPIP puede cerrar la sesion. Retira el acceso de solo lectura del consultor de comite. Repetir la solicitud sobre una sesion ya cerrada devuelve 204 sin crear un nuevo evento de bitacora.
+      x-idempotency: La operacion es idempotente por estado de la sesion.
+      x-acceptance-criteria: [RF-13-AC-3]
+      parameters: [{name: sesionId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'204': {description: Sesion cerrada y acceso temporal retirado}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /parques/{parqueId}/dictamenes:
+    post:
+      tags: [Comite y dictamen]
+      summary: Capturar dictamen en borrador
+      x-acceptance-criteria: [RF-14-AC-2, RF-14-AC-3, RF-14-AC-4, RF-14-AC-5, RF-14-AC-6, RF-14-AC-8]
+      parameters: [{$ref: '#/components/parameters/ParkId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VerdictCreate'}}}}
+      responses: {'201': {description: Dictamen borrador, content: {application/json: {schema: {$ref: '#/components/schemas/Verdict'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /dictamenes/{dictamenId}/firma:
+    post:
+      tags: [Comite y dictamen]
+      summary: Firmar dictamen en borrador
+      description: Repetir la solicitud sobre un dictamen ya firmado devuelve el dictamen firmado sin registrar una firma ni evento de bitacora adicional.
+      x-idempotency: La operacion es idempotente por estado del dictamen.
+      x-acceptance-criteria: [RF-14-AC-1, RF-14-AC-7]
+      parameters: [{$ref: '#/components/parameters/VerdictId'}]
+      responses: {'200': {description: Dictamen firmado, content: {application/json: {schema: {$ref: '#/components/schemas/Verdict'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /evidencias:
+    post:
+      tags: [Evidencias]
+      summary: Cargar una o varias evidencias y vincularlas a criterios
+      x-acceptance-criteria: [RF-05-AC-1, RF-05-AC-4, RF-05-AC-5, RF-05-AC-7, RF-05-AC-8, RF-06-AC-1, RF-06-AC-2, RF-06-AC-3, RF-06-AC-4, RF-06-AC-5, RF-06-AC-6, RF-23-AC-2, RF-27-AC-4, RF-27-AC-7]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {$ref: '#/components/schemas/EvidenceUpload'}}}}
+      responses: {'201': {description: Evidencias creadas; EvidenceUploadResult identifica individualmente los archivos creados y los rechazados, content: {application/json: {schema: {$ref: '#/components/schemas/EvidenceUploadResult'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}, '500': {$ref: '#/components/responses/InternalServerError'}}
+  /evidencias/{evidenciaId}:
+    get:
+      tags: [Evidencias]
+      summary: Consultar metadatos e historial de evidencia
+      x-acceptance-criteria: [RF-05-AC-6]
+      parameters: [{$ref: '#/components/parameters/EvidenceId'}]
+      responses: {'200': {description: Evidencia, content: {application/json: {schema: {$ref: '#/components/schemas/Evidence'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+    delete:
+      tags: [Evidencias]
+      summary: Eliminar logicamente una evidencia enviada
+      x-acceptance-criteria: [RF-05-AC-9, RF-05-AC-10]
+      parameters: [{$ref: '#/components/parameters/EvidenceId'}]
+      responses: {'204': {description: Evidencia eliminada logicamente}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /evidencias/{evidenciaId}/contenido:
+    get:
+      tags: [Evidencias]
+      summary: Obtener URL firmada para descargar contenido autorizado
+      x-acceptance-criteria: [RF-07-AC-3, RF-16-AC-2, RF-16-AC-3, RF-35-AC-1]
+      parameters: [{$ref: '#/components/parameters/EvidenceId'}]
+      responses: {'200': {description: URL firmada de hasta cinco minutos; registra la descarga autorizada en la bitacora, content: {application/json: {schema: {$ref: '#/components/schemas/SignedUrl'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /evidencias/{evidenciaId}/observaciones:
+    post:
+      tags: [Evidencias]
+      summary: Observar evidencia enviada
+      x-acceptance-criteria: [RF-05-AC-2, RF-05-AC-3, RF-23-AC-2]
+      parameters: [{$ref: '#/components/parameters/EvidenceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ObservationCreate'}}}}
+      responses: {'201': {description: Observacion creada, content: {application/json: {schema: {$ref: '#/components/schemas/Observation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /evidencias/{evidenciaId}/aceptacion:
+    put:
+      tags: [Evidencias]
+      summary: Aceptar evidencia enviada
+      description: Repetir la solicitud para el mismo vinculo evidencia-criterio ya aceptado devuelve el estado actual sin crear un nuevo cambio ni evento de bitacora.
+      x-idempotency: La operacion es idempotente por estado del vinculo evidencia-criterio.
+      x-acceptance-criteria: [RF-27-AC-1, RF-27-AC-5]
+      parameters: [{$ref: '#/components/parameters/EvidenceId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EvidenceLinkAction'}}}}
+      responses: {'200': {description: Vinculo de evidencia aceptado, content: {application/json: {schema: {$ref: '#/components/schemas/Evidence'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /evaluaciones-criterio/{evaluacionId}:
+    patch:
+      tags: [Cumplimiento]
+      summary: Calificar o reabrir un criterio
+      x-acceptance-criteria: [RF-17-AC-1, RF-17-AC-2, RF-17-AC-3, RF-27-AC-2, RF-27-AC-3, RF-27-AC-5, RF-27-AC-6, RF-27-AC-8]
+      parameters: [{$ref: '#/components/parameters/EvaluationId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CriterionEvaluationPatch'}}}}
+      responses: {'200': {description: Calificacion actualizada, content: {application/json: {schema: {$ref: '#/components/schemas/CriterionEvaluation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /evaluaciones-criterio/{evaluacionId}/recomendaciones:
+    post:
+      tags: [Cumplimiento]
+      summary: Registrar recomendacion del consultor
+      x-acceptance-criteria: [RF-36-AC-1, RF-36-AC-2]
+      parameters: [{$ref: '#/components/parameters/EvaluationId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecommendationCreate'}}}}
+      responses: {'201': {description: Recomendacion creada, content: {application/json: {schema: {$ref: '#/components/schemas/Recommendation'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /auditorias:
+    post:
+      tags: [Cumplimiento]
+      summary: Registrar auditoria del subestandar 1.4
+      x-acceptance-criteria: [RF-18-AC-1, RF-18-AC-2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AuditCreate'}}}}
+      responses: {'201': {description: Auditoria creada, content: {application/json: {schema: {$ref: '#/components/schemas/Audit'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /visitas-validacion:
+    post:
+      tags: [Cumplimiento]
+      summary: Registrar visita de validacion y hallazgos
+      x-acceptance-criteria: [RF-37-AC-1, RF-37-AC-2, RF-37-AC-3]
+      requestBody: {required: true, content: {multipart/form-data: {schema: {$ref: '#/components/schemas/ValidationVisitCreate'}}}}
+      responses: {'201': {description: Visita creada, content: {application/json: {schema: {$ref: '#/components/schemas/ValidationVisit'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /distintivos/{distintivoId}:
+    get:
+      tags: [Cumplimiento]
+      summary: Consultar estado del distintivo
+      x-acceptance-criteria: []
+      parameters: [{$ref: '#/components/parameters/BadgeId'}]
+      responses: {'200': {description: Distintivo, content: {application/json: {schema: {$ref: '#/components/schemas/Badge'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /distintivos/{distintivoId}/renovaciones:
+    post:
+      tags: [Cumplimiento]
+      summary: Iniciar renovacion o registrar prorroga
+      x-acceptance-criteria: [RF-38-AC-1, RF-38-AC-3]
+      parameters: [{$ref: '#/components/parameters/BadgeId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RenewalCreate'}}}}
+      responses: {'201': {description: Renovacion o prorroga creada, content: {application/json: {schema: {$ref: '#/components/schemas/Badge'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '422': {$ref: '#/components/responses/ValidationError'}}
+  /reportes/mensual:
+    get:
+      tags: [Reportes y bitacora]
+      summary: Generar reporte mensual de Direccion
+      x-acceptance-criteria: [RF-21-AC-1, RF-21-AC-2]
+      parameters: [{$ref: '#/components/parameters/GenerationQuery'}, {name: mes, in: query, required: true, schema: {type: string, format: date}}]
+      responses: {'200': {description: Reporte mensual, content: {application/json: {schema: {$ref: '#/components/schemas/MonthlyReport'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /reporte-asociados:
+    get:
+      tags: [Reportes y bitacora]
+      summary: Generar reporte agregado para asociados
+      x-acceptance-criteria: [RF-22-AC-1, RF-22-AC-2]
+      responses: {'200': {description: Reporte agregado sin progreso individual, content: {application/json: {schema: {$ref: '#/components/schemas/AssociatesReport'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /bitacora:
+    get:
+      tags: [Reportes y bitacora]
+      summary: Consultar bitacora de solo append
+      x-acceptance-criteria: [RF-35-AC-2, RF-35-AC-3, RF-35-AC-4]
+      parameters: [{$ref: '#/components/parameters/ParkQuery'}, {name: usuarioId, in: query, schema: {type: string, format: uuid}}, {name: accion, in: query, schema: {type: string}}, {name: desde, in: query, schema: {type: string, format: date}}, {name: hasta, in: query, schema: {type: string, format: date}}]
+      responses: {'200': {description: Eventos ordenados descendentemente, content: {application/json: {schema: {$ref: '#/components/schemas/AuditLogList'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /configuracion/cargas:
+    patch:
+      tags: [Catalogo]
+      summary: Configurar limite de tamano de evidencias
+      x-acceptance-criteria: [RF-06-AC-6, RF-06-AC-7]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FileLimitPatch'}}}}
+      responses: {'200': {description: Limite actualizado, content: {application/json: {schema: {$ref: '#/components/schemas/FileLimit'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '422': {$ref: '#/components/responses/ValidationError'}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    ParkId: {name: parqueId, in: path, required: true, schema: {type: string, format: uuid}}
+    UserId: {name: usuarioId, in: path, required: true, schema: {type: string, format: uuid}}
+    CriterionId: {name: criterioId, in: path, required: true, schema: {type: string, format: uuid}}
+    EvidenceId: {name: evidenciaId, in: path, required: true, schema: {type: string, format: uuid}}
+    EvaluationId: {name: evaluacionId, in: path, required: true, schema: {type: string, format: uuid}}
+    VerdictId: {name: dictamenId, in: path, required: true, schema: {type: string, format: uuid}}
+    BadgeId: {name: distintivoId, in: path, required: true, schema: {type: string, format: uuid}}
+    PhaseId: {name: faseId, in: path, required: true, schema: {type: string}}
+    GenerationQuery: {name: generacionId, in: query, schema: {type: string, format: uuid}}
+    DeveloperQuery: {name: desarrolladorId, in: query, schema: {type: string, format: uuid}}
+    ParkQuery: {name: parqueId, in: query, schema: {type: string, format: uuid}}
+  responses:
+    BadRequest: {description: Solicitud invalida, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Unauthorized: {description: 'Token ausente, invalido, revocado o expirado', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Forbidden: {description: Sin permisos sobre el recurso, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    NotFound: {description: Recurso no encontrado, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    ValidationError: {description: Regla de negocio o validacion incumplida, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    InternalServerError: {description: Error inesperado del servidor, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  schemas:
+    Id: {type: string, format: uuid}
+    DateTime: {type: string, format: date-time}
+    Role: {type: string, enum: [coordinacion_ampip, director_general_ampip, appi, consultor_asignado, consultor_comite, gerente_corporativo, administrador_tecnico]}
+    PiType: {type: string, enum: [construccion_abierto, construccion_cerrado, operacion_abierto, operacion_cerrado]}
+    Error: {type: object, required: [codigo, mensaje], properties: {codigo: {type: string, example: VALIDATION_ERROR}, mensaje: {type: string}, detalles: {type: array, items: {type: object, properties: {campo: {type: string}, mensaje: {type: string}, fila: {type: integer, minimum: 1, description: Fila del CSV cuando corresponda.}, columna: {type: string, description: Columna del CSV cuando corresponda.}}}}}}
+    FileLimitPatch: {type: object, required: [maximoMB], properties: {maximoMB: {type: integer, minimum: 1, maximum: 100}}}
+    FileLimit: {$ref: '#/components/schemas/FileLimitPatch'}
+    LoginRequest: {type: object, required: [correo, contrasena], properties: {correo: {type: string, format: email}, contrasena: {type: string, format: password, minLength: 8}}}
+    EmailRequest: {type: object, required: [correo], properties: {correo: {type: string, format: email}}}
+    PasswordResetConfirm: {type: object, required: [nuevaContrasena], properties: {nuevaContrasena: {type: string, format: password, minLength: 8}}}
+    Token: {type: object, required: [accessToken, tokenType, expiraPorInactividadMinutos], properties: {accessToken: {type: string}, tokenType: {type: string, enum: [Bearer]}, expiraPorInactividadMinutos: {type: integer, example: 60}}}
+    UserCreate: {type: object, required: [correo, rol], properties: {correo: {type: string, format: email}, rol: {$ref: '#/components/schemas/Role'}, parqueId: {$ref: '#/components/schemas/Id'}, desarrolladorId: {$ref: '#/components/schemas/Id'}}}
+    UserPatch: {type: object, properties: {estado: {type: string, enum: [activo, inactivo]}, rol: {$ref: '#/components/schemas/Role'}}}
+    User: {type: object, required: [id, correo, rol, estado, fechaAlta], properties: {id: {$ref: '#/components/schemas/Id'}, correo: {type: string, format: email}, rol: {$ref: '#/components/schemas/Role'}, estado: {type: string, enum: [pendiente_activacion, activo, inactivo]}, fechaAlta: {$ref: '#/components/schemas/DateTime'}}}
+    CatalogUpload: {type: object, required: [identificador, archivo], properties: {identificador: {type: string, example: catalogo-2023-v1}, archivo: {type: string, format: binary, description: CSV con columnas requeridas del SRS}}}
+    CatalogVersion: {type: object, required: [id, identificador, vigente], properties: {id: {$ref: '#/components/schemas/Id'}, identificador: {type: string}, vigente: {type: boolean}}}
+    GenerationCreate: {type: object, required: [nombre, fechaInicio, versionCatalogoId], properties: {nombre: {type: string}, fechaInicio: {type: string, format: date}, versionCatalogoId: {$ref: '#/components/schemas/Id'}}}
+    Generation: {allOf: [{$ref: '#/components/schemas/GenerationCreate'}, {type: object, required: [id], properties: {id: {$ref: '#/components/schemas/Id'}}}]}
+    ParkCreate: {oneOf: [{$ref: '#/components/schemas/ActiveParkCreate'}, {$ref: '#/components/schemas/HistoricalParkCreate'}]}
+    ActiveParkCreate: {type: object, description: Alta de parque activo de una generacion (RF-02 y RF-28)., required: [nombre, desarrolladorId, tipoPI, region, generacionId], properties: {nombre: {type: string}, desarrolladorId: {$ref: '#/components/schemas/Id'}, tipoPI: {$ref: '#/components/schemas/PiType'}, region: {type: string, enum: [Aguascalientes, Baja_California, Baja_California_Sur, Campeche, Chiapas, Chihuahua, Ciudad_de_Mexico, Coahuila, Colima, Durango, Estado_de_Mexico, Guanajuato, Guerrero, Hidalgo, Jalisco, Michoacan, Morelos, Nayarit, Nuevo_Leon, Oaxaca, Puebla, Queretaro, Quintana_Roo, San_Luis_Potosi, Sinaloa, Sonora, Tabasco, Tamaulipas, Tlaxcala, Veracruz, Yucatan, Zacatecas]}, generacionId: {$ref: '#/components/schemas/Id'}, historico: {type: boolean, enum: [false], default: false}}}
+    HistoricalParkCreate: {type: object, description: Alta minima de parque historico sin expediente migrado (RF-31)., required: [nombre, region, historico, fechaUltimoDictamen, fechaTermino], properties: {nombre: {type: string}, region: {type: string, enum: [Aguascalientes, Baja_California, Baja_California_Sur, Campeche, Chiapas, Chihuahua, Ciudad_de_Mexico, Coahuila, Colima, Durango, Estado_de_Mexico, Guanajuato, Guerrero, Hidalgo, Jalisco, Michoacan, Morelos, Nayarit, Nuevo_Leon, Oaxaca, Puebla, Queretaro, Quintana_Roo, San_Luis_Potosi, Sinaloa, Sonora, Tabasco, Tamaulipas, Tlaxcala, Veracruz, Yucatan, Zacatecas]}, historico: {type: boolean, enum: [true], description: Indicador tecnico para distinguir el alta minima historica.}, fechaUltimoDictamen: {type: string, format: date}, fechaTermino: {type: string, format: date}}}
+    ParkPatch: {type: object, properties: {tipoPI: {$ref: '#/components/schemas/PiType'}, motivoCambioTipo: {type: string, minLength: 1}, estado: {type: string, enum: [activo, inactivo]}, fechaTermino: {type: string, format: date}, fechaActualizacion: {type: string, format: date, description: Fecha de actualizacion realizada; recalcula la proxima anual.}, fechaProximaActualizacion: {type: string, format: date, description: Fecha inicial programada para la siguiente actualizacion anual.}}}
+    ParkTypeHistoryEntry: {type: object, required: [tipoPI, fechaDesde, cambiadoPor, cumplimientoAlCierre], properties: {tipoPI: {$ref: '#/components/schemas/PiType'}, fechaDesde: {type: string, format: date}, fechaHasta: {type: string, format: date, nullable: true}, motivo: {type: string, nullable: true}, cambiadoPor: {$ref: '#/components/schemas/Id'}, cumplimientoAlCierre: {$ref: '#/components/schemas/Compliance'}}}
+    Park: {type: object, required: [id, nombre, region, estado, fechaAlta], properties: {id: {$ref: '#/components/schemas/Id'}, nombre: {type: string}, region: {type: string}, tipoPI: {$ref: '#/components/schemas/PiType'}, estado: {type: string, enum: [activo, inactivo, historico]}, fechaAlta: {type: string, format: date}, fechaTermino: {type: string, format: date, nullable: true}, fechaProximaActualizacion: {type: string, format: date, nullable: true}, atrasadoPorActualizacion: {type: boolean, description: Indica atraso por vencimiento de fechaProximaActualizacion.}, historialTipos: {type: array, items: {$ref: '#/components/schemas/ParkTypeHistoryEntry'}}, historial: {type: array, items: {$ref: '#/components/schemas/CaseFile'}}}}
+    ParkList: {type: array, items: {$ref: '#/components/schemas/Park'}}
+    AppiLinkPatch: {type: object, required: [esContactoPrincipal], properties: {esContactoPrincipal: {type: boolean}}}
+    AppiLink: {type: object, required: [usuario, activo, esContactoPrincipal], properties: {usuario: {$ref: '#/components/schemas/User'}, activo: {type: boolean}, esContactoPrincipal: {type: boolean}}}
+    AppiLinkList: {type: array, items: {$ref: '#/components/schemas/AppiLink'}}
+    ConsultantAssignmentRequest: {type: object, required: [consultorId], properties: {consultorId: {$ref: '#/components/schemas/Id'}}}
+    ConsultantAssignment: {type: object, required: [id, consultorId, fechaInicio], properties: {id: {$ref: '#/components/schemas/Id'}, consultorId: {$ref: '#/components/schemas/Id'}, fechaInicio: {type: string, format: date}, fechaFin: {type: string, format: date, nullable: true}}}
+    CriterionPatch: {type: object, required: [evidenciaSuficiente], properties: {evidenciaSuficiente: {type: string}}}
+    Criterion: {type: object, required: [id, numero, descripcion, metodoVerificacion], properties: {id: {$ref: '#/components/schemas/Id'}, numero: {type: string}, descripcion: {type: string}, metodoVerificacion: {type: string}, evidenciaSuficiente: {type: string, nullable: true}}}
+    SelfAssessmentCreate: {type: object, required: [parqueId, criterioId], properties: {parqueId: {$ref: '#/components/schemas/Id'}, criterioId: {$ref: '#/components/schemas/Id'}}}
+    CriterionEvaluationPatch: {type: object, required: [estado], properties: {estado: {type: string, enum: [cumplido, no_cumplido, en_revision]}, motivoReapertura: {type: string}}}
+    CriterionEvaluation: {type: object, required: [id, criterio, marcaAplicable, fechaUltimoCambio], properties: {id: {$ref: '#/components/schemas/Id'}, criterio: {$ref: '#/components/schemas/Criterion'}, marcaAplicable: {type: string, enum: [O, R]}, estado: {type: string, enum: [pendiente, en_revision, cumplido, no_cumplido], nullable: true}, fechaUltimoCambio: {$ref: '#/components/schemas/DateTime'}, actualizadoPor: {$ref: '#/components/schemas/Id'}, motivoReapertura: {type: string, nullable: true}}}
+    CriterionEvaluationList: {type: array, items: {$ref: '#/components/schemas/CriterionEvaluation'}}
+    CasePhase: {type: object, required: [id, nombre, estado, fechaCambio], properties: {id: {$ref: '#/components/schemas/Id'}, nombre: {type: string}, estado: {type: string, enum: [pendiente, en_proceso, completada, avanzada_por_excepcion]}, motivoExcepcion: {type: string, nullable: true}, fechaCambio: {$ref: '#/components/schemas/DateTime'}, evidenciasEntregadas: {type: integer, minimum: 0, description: Evidencias entregadas en la fase; no implica que la fase este validada o completada.}}}
+    PhaseExceptionCreate: {type: object, required: [faseDestinoId, motivo], properties: {faseDestinoId: {type: string}, motivo: {type: string, minLength: 1}}}
+    RiskReviewCreate: {type: object, required: [fechaRevision, version, firmante, resumen, ciclo], properties: {fechaRevision: {type: string, format: date}, version: {type: string}, firmante: {type: string}, resumen: {type: string}, ciclo: {type: string}, documento: {type: string, format: binary, description: Archivo opcional; solo APPI y consultor asignado pueden abrirlo}}}
+    RiskReview: {allOf: [{$ref: '#/components/schemas/RiskReviewCreate'}, {type: object, required: [id, vigente], properties: {id: {$ref: '#/components/schemas/Id'}, vigente: {type: boolean}, documentoEvidenciaId: {type: string, format: uuid, nullable: true, description: Evidencia del documento opcional; su contenido se consulta solo mediante el endpoint autorizado de evidencia.}}}]}
+    WorkPlanCreate: {type: object, required: [evaluacionCriterioId, responsableId, fechaComprometida], properties: {evaluacionCriterioId: {$ref: '#/components/schemas/Id'}, responsableId: {$ref: '#/components/schemas/Id'}, fechaComprometida: {type: string, format: date}}}
+    WorkPlan: {allOf: [{$ref: '#/components/schemas/WorkPlanCreate'}, {type: object, required: [id, atrasado], properties: {id: {$ref: '#/components/schemas/Id'}, atrasado: {type: boolean}}}]}
+    Compliance: {type: object, required: [obligatorios, recomendados, avanceGeneral], properties: {obligatorios: {type: number, format: float, nullable: true}, recomendados: {type: number, format: float, nullable: true}, avanceGeneral: {type: number, format: float, nullable: true}}}
+    CaseFile: {type: object, required: [id, parqueId, generacionId, versionCatalogo, fases, cumplimiento], properties: {id: {$ref: '#/components/schemas/Id'}, parqueId: {$ref: '#/components/schemas/Id'}, generacionId: {$ref: '#/components/schemas/Id'}, versionCatalogo: {type: string}, faseActualId: {$ref: '#/components/schemas/Id'}, fases: {type: array, items: {$ref: '#/components/schemas/CasePhase'}}, cumplimiento: {$ref: '#/components/schemas/Compliance'}, evaluaciones: {$ref: '#/components/schemas/CriterionEvaluationList'}, opiniones: {type: array, items: {$ref: '#/components/schemas/Opinion'}}, dictamenes: {type: array, items: {$ref: '#/components/schemas/Verdict'}}}}
+    EvidenceUpload: {type: object, required: [parqueId, criterioIds, archivos], properties: {parqueId: {$ref: '#/components/schemas/Id'}, criterioIds: {type: array, minItems: 1, description: Un archivo puede vincularse a varios criterios del mismo expediente, items: {$ref: '#/components/schemas/Id'}}, faseId: {type: string}, fechaVencimiento: {type: string, format: date}, archivos: {type: array, minItems: 1, description: 'PDF, JPG, PNG, HEIC, XLSX o DOCX; tamano maximo configurado, hasta 100 MB; los videos no se aceptan.', items: {type: string, format: binary}}}}
+    EvidenceUploadResult: {type: object, required: [creadas, rechazadas], description: La respuesta 201 informa individualmente las evidencias creadas y los archivos rechazados en la misma carga., properties: {creadas: {type: array, description: Archivos aceptados y creados., items: {$ref: '#/components/schemas/Evidence'}}, rechazadas: {type: array, description: Archivos no creados junto con su motivo de rechazo., items: {type: object, required: [nombre, motivo], properties: {nombre: {type: string}, motivo: {type: string}}}}}}
+    EvidenceCriterionLink: {type: object, required: [id, criterioId, estado, vigente], properties: {id: {$ref: '#/components/schemas/Id'}, criterioId: {$ref: '#/components/schemas/Id'}, estado: {type: string, enum: [enviada, observada, aceptada]}, vigente: {type: boolean}, observaciones: {type: array, items: {$ref: '#/components/schemas/Observation'}}}}
+    EvidenceVersion: {type: object, required: [id, numeroVersion, fechaCarga, vinculos], properties: {id: {$ref: '#/components/schemas/Id'}, numeroVersion: {type: integer, minimum: 1}, fechaCarga: {$ref: '#/components/schemas/DateTime'}, vinculos: {type: array, items: {$ref: '#/components/schemas/EvidenceCriterionLink'}}}}
+    Evidence: {type: object, required: [id, nombreOriginal, tipoArchivo, tamanoBytes, numeroVersion, fechaCarga, eliminada, vinculos], properties: {id: {$ref: '#/components/schemas/Id'}, nombreOriginal: {type: string}, tipoArchivo: {type: string, enum: [application/pdf, image/jpeg, image/png, image/heic, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.openxmlformats-officedocument.wordprocessingml.document]}, tamanoBytes: {type: integer, format: int64}, numeroVersion: {type: integer, minimum: 1}, versionAnteriorId: {$ref: '#/components/schemas/Id'}, faseId: {type: string, nullable: true}, fechaCarga: {$ref: '#/components/schemas/DateTime'}, fechaVencimiento: {type: string, format: date, nullable: true}, eliminada: {type: boolean}, cargadaPor: {$ref: '#/components/schemas/Id'}, vinculos: {type: array, minItems: 1, items: {$ref: '#/components/schemas/EvidenceCriterionLink'}}, historial: {type: array, items: {$ref: '#/components/schemas/EvidenceVersion'}, description: Versiones anteriores y sus vinculos revisados de forma independiente}}}
+    SignedUrl: {type: object, required: [url, expiraEn], properties: {url: {type: string, format: uri}, expiraEn: {$ref: '#/components/schemas/DateTime'}}}
+    EvidenceLinkAction: {type: object, required: [criterioId], properties: {criterioId: {$ref: '#/components/schemas/Id'}}}
+    ObservationCreate: {allOf: [{$ref: '#/components/schemas/EvidenceLinkAction'}, {type: object, required: [motivo], properties: {motivo: {type: string, minLength: 1}}}]}
+    Observation: {allOf: [{$ref: '#/components/schemas/ObservationCreate'}, {type: object, required: [id, fecha, autorId], properties: {id: {$ref: '#/components/schemas/Id'}, fecha: {$ref: '#/components/schemas/DateTime'}, autorId: {$ref: '#/components/schemas/Id'}}}]}
+    OpinionCreate: {type: object, required: [tipo], properties: {tipo: {type: string, enum: [intermedia, final]}, favorable: {type: boolean, description: Obligatorio si tipo es final}}}
+    Opinion: {allOf: [{$ref: '#/components/schemas/OpinionCreate'}, {type: object, required: [id, fechaEmision, porcentajeObligatorios, porcentajeAvanceGeneral], properties: {id: {$ref: '#/components/schemas/Id'}, fechaEmision: {$ref: '#/components/schemas/DateTime'}, porcentajeObligatorios: {type: number}, porcentajeAvanceGeneral: {type: number}}}]}
+    PerformanceEvaluationCreate: {type: object, required: [fecha, resultado], properties: {fecha: {type: string, format: date}, resultado: {type: string}, archivo: {type: string, format: binary}}}
+    PerformanceEvaluation: {allOf: [{$ref: '#/components/schemas/PerformanceEvaluationCreate'}, {type: object, required: [id, folio, consultorId, versionCatalogoId], properties: {id: {$ref: '#/components/schemas/Id'}, folio: {type: string}, consultorId: {$ref: '#/components/schemas/Id'}, versionCatalogoId: {$ref: '#/components/schemas/Id'}}}]}
+    CommitteeSessionCreate: {type: object, required: [consultorComiteId], properties: {consultorComiteId: {$ref: '#/components/schemas/Id'}}}
+    CommitteeSession: {allOf: [{$ref: '#/components/schemas/CommitteeSessionCreate'}, {type: object, required: [id, fechaApertura, soloLectura], properties: {id: {$ref: '#/components/schemas/Id'}, fechaApertura: {$ref: '#/components/schemas/DateTime'}, fechaCierre: {$ref: '#/components/schemas/DateTime'}, soloLectura: {type: boolean}}}]}
+    VerdictCreate: {type: object, required: [resultado, motivo], properties: {resultado: {type: string, enum: [otorgar, no_otorgar]}, motivo: {type: string, minLength: 1}}}
+    Verdict: {allOf: [{$ref: '#/components/schemas/VerdictCreate'}, {type: object, required: [id, estado, fechaCaptura], properties: {id: {$ref: '#/components/schemas/Id'}, estado: {type: string, enum: [borrador, firmado]}, fechaCaptura: {$ref: '#/components/schemas/DateTime'}, fechaFirma: {$ref: '#/components/schemas/DateTime'}, firmanteId: {$ref: '#/components/schemas/Id'}}}]}
+    RecommendationCreate: {type: object, required: [texto], properties: {texto: {type: string, minLength: 1}}}
+    Recommendation: {allOf: [{$ref: '#/components/schemas/RecommendationCreate'}, {type: object, required: [id, autorId, fecha], properties: {id: {$ref: '#/components/schemas/Id'}, autorId: {$ref: '#/components/schemas/Id'}, fecha: {$ref: '#/components/schemas/DateTime'}}}]}
+    AuditCreate: {type: object, required: [parqueId, fecha, tipo, participantes, acciones], properties: {parqueId: {$ref: '#/components/schemas/Id'}, fecha: {type: string, format: date}, tipo: {type: string, enum: [interna, externa]}, participantes: {type: array, minItems: 1, items: {type: string}}, acciones: {type: string}, terceroAcreditado: {type: string}, notificadoCorporativo: {type: boolean}}}
+    Audit: {allOf: [{$ref: '#/components/schemas/AuditCreate'}, {type: object, required: [id], properties: {id: {$ref: '#/components/schemas/Id'}}}]}
+    ValidationVisitCreate: {type: object, required: [parqueId, fecha, participantes, hallazgos], properties: {parqueId: {$ref: '#/components/schemas/Id'}, fecha: {type: string, format: date}, participantes: {type: array, minItems: 1, items: {type: string}}, hallazgos: {type: array, items: {type: object, required: [descripcion, accionCorrectiva, estado], properties: {descripcion: {type: string}, accionCorrectiva: {type: string}, estado: {type: string, enum: [abierto, cerrado]}}}}, archivos: {type: array, items: {type: string, format: binary}}}}
+    ValidationVisit: {allOf: [{$ref: '#/components/schemas/ValidationVisitCreate'}, {type: object, required: [id], properties: {id: {$ref: '#/components/schemas/Id'}}}]}
+    Badge: {type: object, required: [id, parqueId, fechaInicioVigencia, fechaVencimiento, estado], properties: {id: {$ref: '#/components/schemas/Id'}, parqueId: {$ref: '#/components/schemas/Id'}, fechaInicioVigencia: {type: string, format: date}, fechaVencimiento: {type: string, format: date}, estado: {type: string, enum: [vigente, proximo_a_vencer, vencido, en_renovacion, con_prorroga_autorizada]}}}
+    RenewalCreate: {type: object, required: [tipo], properties: {tipo: {type: string, enum: [solicitud, prorroga]}, motivo: {type: string}, responsableId: {$ref: '#/components/schemas/Id'}, nuevaFechaLimite: {type: string, format: date}}}
+    MonthlyReport: {type: object, required: [generacionId, mes, parques], properties: {generacionId: {$ref: '#/components/schemas/Id'}, mes: {type: string, format: date}, parques: {type: array, items: {type: object, required: [nombre, fase, atrasado, observacionesAbiertas], properties: {nombre: {type: string}, fase: {type: string}, atrasado: {type: boolean}, observacionesAbiertas: {type: integer}}}}}}
+    AssociatesReport: {type: object, required: [regiones, parquesConDistintivoVigente], properties: {regiones: {type: array, items: {type: object, required: [region, parquesVigentes, parquesEnProceso, parquesRenovados], properties: {region: {type: string}, parquesVigentes: {type: integer}, parquesEnProceso: {type: integer}, parquesRenovados: {type: integer}}}}, parquesConDistintivoVigente: {type: array, items: {type: object, required: [nombre], properties: {nombre: {type: string}}}}}}
+    AuditLog: {type: object, required: [id, fechaHora, accion, recurso, resultado], properties: {id: {$ref: '#/components/schemas/Id'}, fechaHora: {$ref: '#/components/schemas/DateTime'}, usuarioId: {$ref: '#/components/schemas/Id'}, rol: {$ref: '#/components/schemas/Role'}, parqueId: {$ref: '#/components/schemas/Id'}, accion: {type: string}, recurso: {type: string}, resultado: {type: string, enum: [exitoso, denegado, error]}}}
+    AuditLogList: {type: array, items: {$ref: '#/components/schemas/AuditLog'}}

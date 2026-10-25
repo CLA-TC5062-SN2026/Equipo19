@@ -1,0 +1,1 @@
+Actualice la jerarquía de herencia de la clase **Usuario** para que coincidan con los roles definidos en el requerimiento RF-03. De igual forma, eliminé nombres obsoletos o inconsistentes que aparecían en el diagrama original (hecho por el agente) y actualice La lista que estaba en el diagrama ya que estaba incompleta.

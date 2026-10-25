@@ -1,0 +1,53 @@
+
+@startuml
+title SGPIS - Creación y consulta de parques industriales
+
+autonumber
+
+actor "Cliente (Browser)" as Browser
+participant "Frontend" as Frontend
+participant "Backend API" as API
+database "PostgreSQL" as DB
+
+== Crear parque industrial ==
+
+Browser -> Frontend: Capturar datos del parque
+Frontend -> API: POST /parques\nAuthorization: Bearer JWT\n{nombre, region, tipo}
+
+API -> API: Validar JWT y rol de usuario
+
+alt Token inválido o expirado
+    API --> Frontend: 401 Unauthorized
+    Frontend --> Browser: Solicitar nueva autenticación
+else Usuario sin permisos
+    API --> Frontend: 403 Forbidden
+    Frontend --> Browser: Mostrar acceso denegado
+else Usuario autorizado
+    API -> API: Validar campos y reglas de negocio
+    API -> DB: Verificar duplicidad del parque
+    DB --> API: Resultado de la verificación
+
+    alt Parque duplicado
+        API --> Frontend: 409 Conflict
+        Frontend --> Browser: Mostrar conflicto de registro
+    else Datos válidos y parque inexistente
+        API -> DB: INSERT INTO parques
+        DB --> API: Parque creado con identificador
+        API --> Frontend: 201 Created\n{parque_id, nombre, estado}
+        Frontend --> Browser: Mostrar confirmación
+    end
+end
+
+== Consultar parques ==
+
+Browser -> Frontend: Abrir listado de parques
+Frontend -> API: GET /parques\nAuthorization: Bearer JWT
+
+API -> API: Validar JWT y permisos
+API -> DB: Consultar parques accesibles
+DB --> API: Lista de parques
+
+API --> Frontend: 200 OK\n{items, total}
+Frontend --> Browser: Mostrar listado de parques
+
+@enduml

@@ -1,0 +1,572 @@
+@startuml diagrama_clases_sgpis
+' =====================================================================
+' SGPIS - Diagrama de clases del dominio
+' Fuente: S03_A1/SRS_equipo.md v2.0 (39 RF, 18 RNF, 16 RD)
+'
+' SUPUESTOS
+' 1. Expediente = participación de un parque en una generación (RF-10:
+'    consultor-parque-generación; RF-12-AC-3: una Opinión final por parque
+'    y generación). Se usa también como "ciclo" para la vigencia del análisis
+'    de riesgos (RF-16). Las renovaciones (RF-38) no tienen una entidad de
+'    ciclo propia porque el SRS no la define.
+' 2. Roles: no se modelan con herencia de Usuario. Un mismo usuario puede
+'    tener varios roles con alcances distintos (RF-03-AC-2 prohíbe solo
+'    APPI + Consultor del MISMO parque; un consultor es asignado en un parque
+'    y de comité en otro). Por eso Usuario se compone de AsignacionRol
+'    (rol + alcance opcional: parque o desarrollador). La asignación de
+'    consultor por expediente lleva su propio historial (AsignacionConsultor,
+'    RF-10-AC-2) y el consultor de comité se liga a la SesionComite (RF-13).
+' 3. Herencia solo donde el SRS describe subtipos con datos o reglas distintas:
+'    Parque -> ParqueInscrito / ParqueHistorico (RF-31-AC-2: el histórico solo
+'    tiene datos mínimos, sin tipo de PI ni expediente);
+'    OpinionCumplimiento -> OpinionIntermedia / OpinionFinal (solo la final
+'    lleva "favorable" y es única por expediente, RF-12-AC-3/AC-6);
+'    Auditoria -> AuditoriaInterna / AuditoriaExterna (solo la externa exige
+'    tercero acreditado y notificación al corporativo, RF-18-AC-2).
+' 4. Evidencia (RF-05-AC-7): un mismo Archivo puede sustentar varios criterios;
+'    cada criterio tiene su propia Evidencia con estado independiente. La
+'    Evidencia se compone de versiones (RF-05-AC-6) y cada versión AGREGA un
+'    Archivo compartido. El binario vive en almacenamiento de objetos; Archivo
+'    guarda solo metadatos y la referencia (RF-05-AC-5, SRS 2.4).
+' 5. ELIMINADA se agrega a EstadoEvidencia por RF-05-AC-9 (la tabla de
+'    transiciones de RF-27 no la lista, pero el AC la exige).
+' 6. EstadoCalificacion es opcional en CriterioExpediente: un criterio NA no
+'    tiene estado (glosario 1.3); marcaVigente guarda O/R/NA del tipo de PI
+'    actual.
+' 7. Las fases NO son enum: RF-32 exige guardarlas como datos (DefinicionFase).
+' 8. Clasificación del contenido (RNF-02, RNF-04): el Criterio define la
+'    clasificación por defecto y el Archivo guarda la efectiva. La regla exacta
+'    no está en el SRS (pregunta abierta).
+' 9. Desarrollador se modela como entidad (RF-02 lo captura, RF-23 agrupa por
+'    él), aunque el SRS no lo define formalmente.
+' 10. RespuestaAutoevaluacion (RF-04): el SRS no dice qué captura la APPI; se
+'    asume una autodeclaración sí/no con comentario.
+' 11. Clases con <<posterior>> están fuera del entregable de 12 semanas
+'    (RF-18, RF-37, RF-38) y se incluyen para que el modelo no tenga que
+'    cambiar de forma al agregarlas.
+' 12. Los valores parametrizables (RF-06, RF-19, RD-08) viven en
+'    ConfiguracionSistema, con sus valores iniciales.
+' =====================================================================
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+hide empty methods
+hide empty members
+
+' ---------------------------------------------------------------------
+package "Catálogo" {
+  class VersionCatalogo {
+    identificador : String
+    fechaCarga : DateTime
+    estado : EstadoVersionCatalogo
+  }
+  class Estandar {
+    numero : Integer
+    nombre : String
+  }
+  class Subestandar {
+    clave : String
+    nombre : String
+  }
+  class Criterio {
+    clave : String
+    descripcion : String
+    metodoVerificacion : String
+    evidenciaSuficiente : String [0..1]
+    tieneAsterisco : Boolean
+    clasificacion : ClasificacionContenido
+  }
+  class MarcaCriterio {
+    tipoPI : TipoPI
+    marca : MarcaAplicabilidad
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Identidad y acceso" {
+  class Usuario {
+    correo : String
+    nombreCompleto : String
+    hashContrasena : String
+    estado : EstadoCuenta
+    intentosFallidos : Integer
+    bloqueadoHasta : DateTime [0..1]
+  }
+  class AsignacionRol {
+    rol : Rol
+    fechaDesde : DateTime
+    fechaHasta : DateTime [0..1]
+    esContactoPrincipal : Boolean
+  }
+  class SesionUsuario {
+    tokenHash : String
+    creadaEn : DateTime
+    ultimaActividad : DateTime
+    cerrada : Boolean
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Programa" {
+  class Desarrollador {
+    nombre : String
+  }
+  abstract class Parque {
+    nombre : String
+    region : Region
+    estado : EstadoRegistro
+  }
+  class ParqueInscrito {
+    fechaAlta : Date
+    tipoPIActual : TipoPI
+  }
+  class ParqueHistorico {
+    fechaUltimoDictamen : Date
+    fechaTermino : Date
+  }
+  class HistorialTipoPI {
+    tipoPI : TipoPI
+    fechaDesde : Date
+    fechaHasta : Date [0..1]
+    motivo : String [0..1]
+    cumplimientoObligatoriosAlCierre : Decimal [0..1]
+  }
+  class Generacion {
+    nombre : String
+    fechaInicio : Date
+  }
+  class Expediente {
+    fechaTermino : Date [0..1]
+    fechaProximaActualizacion : Date [0..1]
+    atrasadoPorActualizacion : Boolean
+  }
+  class ActualizacionAnual {
+    fecha : Date
+  }
+  class DefinicionFase {
+    orden : Integer
+    nombre : String
+  }
+  class FaseExpediente {
+    estado : EstadoFase
+    esActual : Boolean
+    fechaCambio : DateTime
+    motivoExcepcion : String [0..1]
+  }
+  class AsignacionConsultor {
+    fechaDesde : DateTime
+    fechaHasta : DateTime [0..1]
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Evaluación del expediente" {
+  class CriterioExpediente {
+    marcaVigente : MarcaAplicabilidad
+    estado : EstadoCalificacion [0..1]
+    fechaUltimoCambio : DateTime [0..1]
+  }
+  class CambioCalificacion {
+    estadoAnterior : EstadoCalificacion [0..1]
+    estadoNuevo : EstadoCalificacion
+    fecha : DateTime
+    motivo : String [0..1]
+  }
+  class RespuestaAutoevaluacion {
+    cumpleSegunAPPI : Boolean
+    comentario : String [0..1]
+    fecha : DateTime
+  }
+  class ItemPlanTrabajo {
+    fechaComprometida : Date
+    atrasado : Boolean
+  }
+  class Recomendacion {
+    texto : String
+    fecha : DateTime
+  }
+  class Evidencia {
+    estado : EstadoEvidencia
+    fechaVencimiento : Date [0..1]
+    fechaEliminacion : DateTime [0..1]
+  }
+  class VersionEvidencia {
+    numero : Integer
+    fechaCarga : DateTime
+    vigente : Boolean
+  }
+  class Observacion {
+    motivo : String
+    fecha : DateTime
+  }
+  class Archivo {
+    nombreOriginal : String
+    formato : FormatoArchivo
+    tamanoBytes : Long
+    referenciaObjeto : String
+    clasificacion : ClasificacionContenido
+    fechaCarga : DateTime
+  }
+  class RevisionAnalisisRiesgos {
+    fechaRevision : Date
+    version : String
+    firmadoPor : String
+    resumen : String
+    vigente : Boolean
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Opiniones y dictamen" {
+  abstract class OpinionCumplimiento {
+    fechaEmision : DateTime
+    pctObligatorios : Decimal
+    pctAvanceGeneral : Decimal
+  }
+  class OpinionIntermedia
+  class OpinionFinal {
+    favorable : Boolean
+  }
+  class EvaluacionDesempeno {
+    folio : String
+    fecha : Date
+    resultado : String
+  }
+  class SesionComite {
+    fechaApertura : DateTime
+    fechaCierre : DateTime [0..1]
+    estado : EstadoSesionComite
+  }
+  class Dictamen {
+    tipo : TipoDictamen
+    motivo : String
+    estado : EstadoDictamen
+    fechaCaptura : DateTime
+    fechaFirma : DateTime [0..1]
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Posterior al semestre" {
+  class Distintivo <<posterior>> {
+    fechaInicio : Date
+    fechaVencimiento : Date
+    estado : EstadoDistintivo
+  }
+  class SolicitudRenovacion <<posterior>> {
+    fechaInicio : Date
+  }
+  class Prorroga <<posterior>> {
+    motivo : String
+    responsable : String
+    nuevaFechaLimite : Date
+    fechaRegistro : DateTime
+  }
+  class VisitaValidacion <<posterior>> {
+    fecha : Date
+    participantes : String [1..*]
+  }
+  class Hallazgo <<posterior>> {
+    descripcion : String
+    accionCorrectiva : String [0..1]
+    estado : EstadoHallazgo
+    fechaCambioEstado : DateTime
+  }
+  abstract class Auditoria <<posterior>> {
+    fecha : Date
+    participantes : String [1..*]
+    acciones : String [0..*]
+  }
+  class AuditoriaInterna <<posterior>>
+  class AuditoriaExterna <<posterior>> {
+    terceroAcreditado : String
+    notificoCorporativo : Boolean
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Transversal" {
+  class RegistroBitacora {
+    fechaHora : DateTime
+    rol : Rol [0..1]
+    accion : String
+    recurso : String
+    resultado : ResultadoOperacion
+  }
+  class Aviso {
+    tipo : TipoAviso
+    asunto : String
+    fechaProgramada : DateTime
+    estado : EstadoEnvio
+    intentos : Integer
+    claveIdempotencia : String
+  }
+  class ConfiguracionSistema {
+    limiteArchivoMB : Integer = 100
+    plazosAvisoDistintivoDias : Integer [1..*]
+    vigenciaDistintivoAnios : Integer = 3
+  }
+}
+
+' ---------------------------------------------------------------------
+package "Enumeraciones" {
+  enum TipoPI {
+    CONSTRUCCION_ABIERTO
+    CONSTRUCCION_CERRADO
+    OPERACION_ABIERTO
+    OPERACION_CERRADO
+  }
+  enum MarcaAplicabilidad {
+    O
+    R
+    NA
+  }
+  enum EstadoVersionCatalogo {
+    ACTIVA
+    SOLO_LECTURA
+  }
+  enum EstadoEvidencia {
+    ENVIADA
+    OBSERVADA
+    ACEPTADA
+    ELIMINADA
+  }
+  enum EstadoCalificacion {
+    PENDIENTE
+    EN_REVISION
+    CUMPLIDO
+    NO_CUMPLIDO
+  }
+  enum EstadoFase {
+    PENDIENTE
+    EN_PROCESO
+    COMPLETADA
+    AVANZADA_POR_EXCEPCION
+  }
+  enum TipoDictamen {
+    OTORGAR
+    NO_OTORGAR
+  }
+  enum EstadoDictamen {
+    BORRADOR
+    FIRMADO
+  }
+  enum EstadoSesionComite {
+    ABIERTA
+    CERRADA
+  }
+  enum EstadoDistintivo {
+    VIGENTE
+    PROXIMO_A_VENCER
+    VENCIDO
+    EN_RENOVACION
+    CON_PRORROGA_AUTORIZADA
+  }
+  enum Rol {
+    COORDINACION_AMPIP
+    DIRECTOR_GENERAL_AMPIP
+    APPI
+    CONSULTOR_ASIGNADO
+    CONSULTOR_COMITE
+    GERENTE_CORPORATIVO
+    ADMINISTRADOR_TECNICO
+  }
+  enum EstadoCuenta {
+    PENDIENTE_ACTIVACION
+    ACTIVA
+    INACTIVA
+  }
+  enum EstadoRegistro {
+    ACTIVO
+    INACTIVO
+  }
+  enum FormatoArchivo {
+    PDF
+    JPG
+    PNG
+    HEIC
+    XLSX
+    DOCX
+  }
+  enum ClasificacionContenido {
+    ADMINISTRATIVA
+    SEGURIDAD
+    DATOS_PERSONALES
+  }
+  enum EstadoHallazgo {
+    ABIERTO
+    CERRADO
+  }
+  enum ResultadoOperacion {
+    EXITOSO
+    DENEGADO
+    FALLIDO
+  }
+  enum EstadoEnvio {
+    PENDIENTE
+    ENVIADO
+    FALLIDO
+  }
+  enum TipoAviso {
+    INVITACION_ALTA
+    RECUPERACION_CONTRASENA
+    OBSERVACION_EVIDENCIA
+    VENCIMIENTO_DISTINTIVO
+    AUDITORIA_INTERNA_PENDIENTE
+    VENCIMIENTO_DOCUMENTO
+  }
+  enum Region {
+    AGUASCALIENTES
+    BAJA_CALIFORNIA
+    BAJA_CALIFORNIA_SUR
+    CAMPECHE
+    CHIAPAS
+    CHIHUAHUA
+    CIUDAD_DE_MEXICO
+    COAHUILA
+    COLIMA
+    DURANGO
+    ESTADO_DE_MEXICO
+    GUANAJUATO
+    GUERRERO
+    HIDALGO
+    JALISCO
+    MICHOACAN
+    MORELOS
+    NAYARIT
+    NUEVO_LEON
+    OAXACA
+    PUEBLA
+    QUERETARO
+    QUINTANA_ROO
+    SAN_LUIS_POTOSI
+    SINALOA
+    SONORA
+    TABASCO
+    TAMAULIPAS
+    TLAXCALA
+    VERACRUZ
+    YUCATAN
+    ZACATECAS
+  }
+}
+
+' =====================================================================
+' RELACIONES
+' =====================================================================
+
+' --- Catálogo (composición: un criterio no existe fuera de su versión) ---
+VersionCatalogo "1" *-- "10" Estandar : contiene
+Estandar "1" *-- "1..*" Subestandar : contiene
+Subestandar "1" *-- "1..*" Criterio : contiene
+Criterio "1" *-- "4" MarcaCriterio : marca por tipo de PI
+
+' --- Identidad y acceso ---
+Usuario "1" *-- "1..*" AsignacionRol : tiene
+Usuario "1" *-- "0..*" SesionUsuario : abre
+AsignacionRol "0..*" --> "0..1" ParqueInscrito : alcance APPI
+AsignacionRol "0..*" --> "0..1" Desarrollador : alcance gerente corporativo
+
+' --- Programa ---
+Parque <|-- ParqueInscrito
+Parque <|-- ParqueHistorico
+Desarrollador "1" -- "0..*" ParqueInscrito : desarrolla
+ParqueInscrito "1" *-- "1..*" HistorialTipoPI : historial de tipo
+HistorialTipoPI "0..*" --> "1" Usuario : registradoPor
+Generacion "0..*" --> "1" VersionCatalogo : usa
+ParqueInscrito "1" *-- "0..*" Expediente : cursa
+Generacion "1" -- "0..*" Expediente : agrupa
+Expediente "0..*" --> "1" VersionCatalogo : evaluadoContra
+Expediente "1" *-- "0..*" ActualizacionAnual : registra
+Expediente "1" *-- "1..*" FaseExpediente : avanza por
+FaseExpediente "0..*" --> "1" DefinicionFase : instancia de
+Expediente "1" *-- "0..*" AsignacionConsultor : historial de consultores
+AsignacionConsultor "0..*" --> "1" Usuario : consultor
+
+' --- Evaluación del expediente ---
+Expediente "1" *-- "1..*" CriterioExpediente : evalúa
+CriterioExpediente "0..*" --> "1" Criterio : sobre
+CriterioExpediente "1" *-- "0..*" CambioCalificacion : historial
+CambioCalificacion "0..*" --> "0..1" Usuario : autor (vacío si es automático)
+CriterioExpediente "1" *-- "0..1" RespuestaAutoevaluacion : autoevaluación
+CriterioExpediente "1" *-- "0..1" ItemPlanTrabajo : plan de trabajo
+ItemPlanTrabajo "0..*" --> "1" Usuario : responsable (APPI del parque)
+CriterioExpediente "1" *-- "0..*" Recomendacion : recibe
+Recomendacion "0..*" --> "1" Usuario : autor
+CriterioExpediente "1" *-- "0..*" Evidencia : sustentado por
+Evidencia "0..*" --> "1" DefinicionFase : fase
+Evidencia "1" *-- "1..*" VersionEvidencia : versiones
+VersionEvidencia "1" *-- "0..*" Observacion : observaciones
+Observacion "0..*" --> "1" Usuario : consultor
+VersionEvidencia "0..*" o-- "1" Archivo : archivo compartido
+Archivo "0..*" --> "1" Usuario : subidoPor
+Expediente "1" *-- "0..*" RevisionAnalisisRiesgos : revisiones
+RevisionAnalisisRiesgos "0..*" o-- "0..1" Archivo : documento opcional
+RevisionAnalisisRiesgos "0..*" --> "1" Usuario : registradaPor
+
+' --- Opiniones y dictamen ---
+OpinionCumplimiento <|-- OpinionIntermedia
+OpinionCumplimiento <|-- OpinionFinal
+Expediente "1" *-- "0..*" OpinionIntermedia : intermedias
+Expediente "1" *-- "0..1" OpinionFinal : final
+OpinionCumplimiento "0..*" --> "1" Usuario : emitidaPor
+Expediente "1" *-- "0..1" EvaluacionDesempeno : evaluación
+EvaluacionDesempeno "0..1" --> "1" OpinionFinal : requiere
+EvaluacionDesempeno "0..*" --> "1" VersionCatalogo : versión
+EvaluacionDesempeno "0..*" --> "1" Usuario : consultor
+EvaluacionDesempeno "0..*" o-- "0..1" Archivo : archivo opcional
+Expediente "1" *-- "0..*" SesionComite : comité
+SesionComite "0..*" --> "1" Usuario : consultorComite
+SesionComite "1" *-- "0..1" Dictamen : resuelve
+Dictamen "0..*" --> "1" Usuario : capturadoPor
+Dictamen "0..*" --> "0..1" Usuario : firmadoPor (Director General)
+
+' --- Posterior al semestre ---
+Dictamen "1" -- "0..1" Distintivo : origina (otorgar firmado)
+ParqueInscrito "1" -- "0..*" Distintivo : ostenta
+Distintivo "1" *-- "0..*" SolicitudRenovacion : renovaciones
+Distintivo "1" *-- "0..*" Prorroga : prórrogas
+Prorroga "0..*" --> "1" Usuario : autorizadaPor
+Expediente "1" *-- "0..*" VisitaValidacion : visitas
+VisitaValidacion "1" *-- "0..*" Hallazgo : hallazgos
+VisitaValidacion "0..*" o-- "0..*" Archivo : fotografías
+VisitaValidacion "0..*" --> "1" Usuario : consultor
+Auditoria <|-- AuditoriaInterna
+Auditoria <|-- AuditoriaExterna
+ParqueInscrito "1" *-- "0..*" Auditoria : auditorías 1.4
+
+' --- Transversal ---
+RegistroBitacora "0..*" --> "0..1" Usuario : actor
+RegistroBitacora "0..*" --> "0..1" Parque : parque afectado
+Aviso "0..*" --> "1..*" Usuario : destinatarios
+
+' --- Restricciones que el diagrama no expresa solo con multiplicidades ---
+note right of Dictamen
+  RD-09 / RF-14: tipo OTORGAR solo se captura si
+  (a) ningún CriterioExpediente O/R aplicable está
+  PENDIENTE o EN_REVISION, (b) existe OpinionFinal
+  con favorable = true y (c) 100 % de los O están
+  CUMPLIDO. Solo DIRECTOR_GENERAL_AMPIP pasa a FIRMADO.
+end note
+
+note bottom of CriterioExpediente
+  RF-17 / RF-27: pasa a CUMPLIDO solo con >= 1 Evidencia
+  ACEPTADA y, en estándares 2, 3 y 7, una
+  RevisionAnalisisRiesgos vigente del mismo Expediente.
+  estado vacío <=> marcaVigente = NA.
+end note
+
+note right of AsignacionRol
+  RF-03-AC-2: un usuario no puede ser APPI y
+  CONSULTOR_ASIGNADO del mismo parque.
+  RF-34: exactamente un contacto principal
+  activo por parque.
+end note
+
+note bottom of RegistroBitacora
+  RNF-03: solo append. Sin composición con
+  Usuario ni Parque: nunca se borra (RNF-14).
+end note
+
+@enduml

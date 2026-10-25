@@ -1,0 +1,356 @@
+@startuml clases_agente
+' Diagrama de clases del dominio SGPIS
+' Propuesta inicial del agente a partir de SRS_final.md (v1.4)
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty methods
+
+title SGPIS - Diagrama de clases del dominio (propuesta del agente)
+
+' ===================== Enumeraciones =====================
+enum TipoPI {
+  CONSTRUCCION_ABIERTO
+  CONSTRUCCION_CERRADO
+  OPERACION_ABIERTO
+  OPERACION_CERRADO
+}
+
+enum Marca {
+  O
+  R
+  NA
+}
+
+enum EstadoEvidencia {
+  ENVIADA
+  OBSERVADA
+  ACEPTADA
+}
+
+enum EstadoCalificacion {
+  PENDIENTE
+  EN_REVISION
+  CUMPLIDO
+  NO_CUMPLIDO
+}
+
+enum Fase {
+  DIAGNOSTICO
+  PLAN_TRABAJO
+  POLITICA_SEGURIDAD
+  ANALISIS_RIESGOS
+  IMPLEMENTACION_ESTANDARES
+  OPINION_INTERMEDIA
+  OPINION_FINAL
+  EVALUACION_DESEMPENO
+  DICTAMEN
+}
+
+enum TipoDictamen {
+  OTORGAR
+  NO_OTORGAR
+}
+
+enum EstadoDictamen {
+  BORRADOR
+  FIRMADO
+}
+
+' ===================== Usuarios y roles =====================
+abstract class Usuario {
+  - id: UUID
+  - nombre: String
+  - correo: String
+  - contrasenaHash: String
+  - estado: String
+  - intentosFallidos: int
+  - bloqueadoHasta: DateTime
+  - fechaAlta: Date
+}
+
+class CoordinacionAMPIP
+class DirectorGeneralAMPIP
+class APPI {
+  - puesto: String
+}
+class Consultor {
+  - empresa: String
+}
+class GerenteCorporativo
+class AdministradorTecnico
+
+Usuario <|-- CoordinacionAMPIP
+Usuario <|-- DirectorGeneralAMPIP
+Usuario <|-- APPI
+Usuario <|-- Consultor
+Usuario <|-- GerenteCorporativo
+Usuario <|-- AdministradorTecnico
+
+class Sesion {
+  - token: String
+  - fechaInicio: DateTime
+  - ultimaActividad: DateTime
+  - activa: boolean
+}
+
+class TokenRecuperacion {
+  - token: String
+  - fechaGeneracion: DateTime
+  - usado: boolean
+}
+
+Usuario "1" *-- "0..*" Sesion
+Usuario "1" *-- "0..*" TokenRecuperacion
+
+' ===================== Catálogo =====================
+class VersionCatalogo {
+  - id: String
+  - fechaCarga: Date
+  - activa: boolean
+}
+
+class Estandar {
+  - numero: int
+  - nombre: String
+}
+
+class Subestandar {
+  - numero: String
+  - nombre: String
+}
+
+class Criterio {
+  - clave: String
+  - descripcion: String
+  - metodoVerificacion: String
+  - evidenciaSuficiente: String
+  - tieneAsterisco: boolean
+}
+
+class MarcaPorTipo {
+  - tipoPI: TipoPI
+  - marca: Marca
+}
+
+VersionCatalogo "1" *-- "10" Estandar
+Estandar "1" *-- "1..*" Subestandar
+Subestandar "1" *-- "1..*" Criterio
+Criterio "1" *-- "4" MarcaPorTipo
+
+' ===================== Generación y parques =====================
+class Generacion {
+  - nombre: String
+  - fechaInicio: Date
+}
+
+Generacion "0..*" --> "1" VersionCatalogo : evalúa contra
+
+class Desarrollador {
+  - nombre: String
+}
+
+class Parque {
+  - nombre: String
+  - region: String
+  - tipoPI: TipoPI
+  - estado: String
+  - fechaAlta: Date
+  - fechaTerminoPrograma: Date
+  - fechaProximaActualizacion: Date
+  - atrasado: boolean
+}
+
+class ParqueHistorico {
+  - fechaUltimoDictamen: Date
+}
+
+Parque <|-- ParqueHistorico
+
+class HistorialTipoPI {
+  - tipoPI: TipoPI
+  - fechaDesde: Date
+  - fechaHasta: Date
+  - cumplimientoObligatorios: decimal
+}
+
+class ActualizacionAnual {
+  - fecha: Date
+}
+
+Desarrollador "1" -- "1..*" Parque
+GerenteCorporativo "0..*" --> "1" Desarrollador : consulta
+Parque "1" *-- "1..*" HistorialTipoPI
+Parque "1" *-- "0..*" ActualizacionAnual
+APPI "1..3" -- "1" Parque : administra
+
+' ===================== Expediente por generación =====================
+class Expediente {
+  - fase: Fase
+  - cumplimientoObligatorios: decimal
+  - avanceGeneral: decimal
+}
+
+Parque "1" *-- "0..*" Expediente
+Generacion "1" -- "0..*" Expediente
+Expediente "0..*" --> "1" VersionCatalogo : versión evaluada
+
+class AsignacionConsultor {
+  - fechaDesde: Date
+  - fechaHasta: Date
+  - vigente: boolean
+}
+
+Expediente "1" *-- "1..*" AsignacionConsultor
+AsignacionConsultor "0..*" --> "1" Consultor
+
+' ===================== Autoevaluación, calificación y evidencias =====================
+class Autoevaluacion {
+  - fecha: Date
+  - revisada: boolean
+}
+
+class CalificacionCriterio {
+  - estado: EstadoCalificacion
+  - fechaUltimoCambio: DateTime
+  - motivoReapertura: String
+}
+
+class Evidencia {
+  - nombreArchivo: String
+  - formato: String
+  - tamanoMB: decimal
+  - fase: Fase
+  - esAdministrativa: boolean
+  - estado: EstadoEvidencia
+  - fechaCarga: DateTime
+  - version: int
+}
+
+class Observacion {
+  - texto: String
+  - fecha: DateTime
+}
+
+Expediente "1" *-- "1" Autoevaluacion
+Autoevaluacion "1" *-- "0..*" CalificacionCriterio
+CalificacionCriterio "0..*" --> "1" Criterio
+CalificacionCriterio "1" *-- "0..*" Evidencia
+Evidencia "1" *-- "0..*" Observacion
+Evidencia "0..*" --> "1" APPI : subida por
+Observacion "0..*" --> "1" Consultor : registrada por
+CalificacionCriterio "0..*" --> "0..1" Consultor : calificado por
+
+' ===================== Plan de trabajo =====================
+class PlanTrabajo {
+  - fechaCreacion: Date
+}
+
+class CompromisoPlan {
+  - fechaComprometida: Date
+  - atrasado: boolean
+}
+
+Expediente "1" *-- "0..1" PlanTrabajo
+PlanTrabajo "1" *-- "0..*" CompromisoPlan
+CompromisoPlan "0..*" --> "1" Criterio
+CompromisoPlan "0..*" --> "1" APPI : responsable
+
+' ===================== Análisis de riesgos =====================
+class RevisionAnalisisRiesgos {
+  - fechaRevision: Date
+  - version: String
+  - firmadoPor: String
+  - resumen: String
+  - vigente: boolean
+  - documentoAdjunto: String [0..1]
+}
+
+Expediente "1" *-- "0..*" RevisionAnalisisRiesgos
+RevisionAnalisisRiesgos "0..*" --> "1" Consultor : registrada por
+
+' ===================== Opiniones de cumplimiento =====================
+abstract class OpinionCumplimiento {
+  - fecha: Date
+  - cumplimientoObligatorios: decimal
+  - avanceGeneral: decimal
+}
+
+class OpinionIntermedia
+class OpinionFinal {
+  - favorable: boolean
+}
+
+OpinionCumplimiento <|-- OpinionIntermedia
+OpinionCumplimiento <|-- OpinionFinal
+
+Expediente "1" *-- "0..1" OpinionIntermedia
+Expediente "1" *-- "0..1" OpinionFinal
+OpinionCumplimiento "0..*" --> "1" Consultor : emitida por
+
+' ===================== Comité y dictamen =====================
+class SesionComite {
+  - fechaApertura: Date
+  - fechaCierre: Date
+  - abierta: boolean
+}
+
+class Dictamen {
+  - tipo: TipoDictamen
+  - motivo: String
+  - estado: EstadoDictamen
+  - fechaCaptura: Date
+  - fechaFirma: Date
+}
+
+class Distintivo {
+  - fechaInicioVigencia: Date
+  - fechaVencimiento: Date
+  - vigente: boolean
+}
+
+Expediente "1" *-- "0..1" SesionComite
+SesionComite "0..*" --> "1" Consultor : consultor de comité
+SesionComite "0..*" --> "1" DirectorGeneralAMPIP
+SesionComite "0..*" --> "1" CoordinacionAMPIP
+SesionComite "1" *-- "0..1" Dictamen
+Dictamen "0..*" --> "0..1" DirectorGeneralAMPIP : firmado por
+Dictamen "1" -- "0..1" Distintivo : origina
+Parque "1" -- "0..*" Distintivo
+
+' ===================== Auditorías (posterior) =====================
+abstract class Auditoria {
+  - fecha: Date
+  - participantes: String
+  - acciones: String
+}
+
+class AuditoriaInterna
+class AuditoriaExterna {
+  - terceroAcreditado: String
+  - notificadoCorporativo: boolean
+}
+
+Auditoria <|-- AuditoriaInterna
+Auditoria <|-- AuditoriaExterna
+Parque "1" *-- "0..*" Auditoria
+
+' ===================== Bitácora y notificaciones =====================
+class RegistroBitacora {
+  - fechaHora: DateTime
+  - accion: String
+  - resultado: String
+}
+
+class Notificacion {
+  - tipo: String
+  - fechaEnvio: DateTime
+  - intentos: int
+  - enviada: boolean
+}
+
+RegistroBitacora "0..*" --> "1" Usuario
+RegistroBitacora "0..*" --> "0..1" Evidencia
+Notificacion "0..*" --> "1..*" Usuario : destinatario
+
+@enduml

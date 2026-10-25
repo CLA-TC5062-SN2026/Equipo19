@@ -1,0 +1,94 @@
+@startuml secuencia_flujo1
+' SGPIS · S04-A2 · Flujo 1: inicio de sesión, acceso con control por rol y cierre de sesión
+' Contrato: openapi.yaml (POST /sesiones, GET /parques/{parque_id}, DELETE /sesiones/actual)
+' Criterios: RF-26-AC-1, AC-2, AC-3, AC-5, AC-6; RF-35-AC-2; RNF-01
+
+title SGPIS · Flujo 1: inicio de sesión, acceso por rol y cierre de sesión
+
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+autonumber "<b>00"
+
+actor "Usuario APPI" as U
+participant "Cliente\n(Browser)" as B
+participant "Frontend\n(React SPA)" as FE
+participant "Backend API\n(FastAPI /api/v1)" as API
+database "Base de datos\n(PostgreSQL)" as DB
+
+== Inicio de sesión (RF-26-AC-1, AC-2, AC-3) ==
+
+U -> B : Captura correo y contraseña
+B -> FE : Envía el formulario de inicio de sesión
+FE -> API : POST /sesiones\n{correo, contrasena}
+activate API
+API -> DB : SELECT usuario, intentos_fallidos, bloqueado_hasta\nWHERE correo = :correo
+DB --> API : fila de usuario (o ninguna)
+
+alt Cuenta bloqueada (bloqueado_hasta > ahora)
+  API -> DB : INSERT eventos_bitacora\n(accion=inicio_sesion, resultado=fallido)
+  API --> FE : 423 Locked (problem+json)\n"Cuenta bloqueada temporalmente; intente de nuevo en 15 minutos"
+  FE --> B : Muestra el mensaje de bloqueo
+else Correo inexistente o contraseña incorrecta
+  API -> API : Verifica hash argon2 en tiempo constante\n(hash ficticio si el correo no existe)
+  API -> DB : UPDATE intentos_fallidos = intentos_fallidos + 1;\nsi llega a 5: bloqueado_hasta = ahora + 15 min
+  API -> DB : INSERT eventos_bitacora\n(accion=inicio_sesion, resultado=fallido)
+  API --> FE : 401 Unauthorized (problem+json)\n"Correo o contraseña incorrectos"
+  FE --> B : Muestra el error sin decir qué dato falló
+else Credenciales válidas
+  API -> API : Verifica hash argon2
+  API -> DB : BEGIN;\nUPDATE intentos_fallidos = 0;\nINSERT sesiones (id, usuario_id, ultimo_uso = ahora, revocada = false);\nINSERT eventos_bitacora (accion=inicio_sesion, resultado=exitoso);\nCOMMIT
+  API --> FE : 201 Created\n{token (JWT con sid), tipo_token: Bearer,\n expira_por_inactividad_min: 60, usuario}
+  FE -> FE : Guarda el token en memoria
+  FE --> B : Redirige al tablero del parque
+end
+deactivate API
+
+== Solicitud protegida con control por rol (RF-26-AC-6, RNF-01, RF-35-AC-2) ==
+
+U -> B : Abre el expediente de otro parque (URL manipulada)
+B -> FE : Navega a /parques/{parque_id}
+FE -> API : GET /parques/{parque_id}\nAuthorization: Bearer <token>
+activate API
+API -> API : Valida firma y expiración absoluta del JWT
+API -> DB : SELECT sesiones WHERE id = :sid AND revocada = false
+DB --> API : sesión (o ninguna)
+
+alt Sesión inexistente, revocada o sin uso por más de 60 min
+  API --> FE : 401 Unauthorized\n"La sesión expiró; inicie sesión de nuevo"
+  FE --> B : Redirige a la pantalla de inicio de sesión
+else Sesión válida
+  API -> DB : UPDATE sesiones SET ultimo_uso = ahora\n(reinicia la ventana de 60 min)
+  API -> DB : SELECT roles y parques del usuario
+  DB --> API : rol appi, parque_id propio
+  alt El parque no pertenece al usuario (dependencia requiere_rol)
+    API -> DB : INSERT eventos_bitacora\n(accion=consultar_expediente, parque_id, resultado=denegado)
+    API --> FE : 403 Forbidden (problem+json)\n"No tiene permiso para consultar este parque"
+    FE --> B : Muestra la página de acceso denegado
+  else Parque propio
+    API -> DB : SELECT expediente del parque
+    DB --> API : parque, fase_actual, version_catalogo, contacto_principal
+    API --> FE : 200 OK Parque
+    FE --> B : Muestra el expediente
+  end
+end
+deactivate API
+
+== Cierre de sesión (RF-26-AC-5) ==
+
+U -> B : Clic en "Cerrar sesión"
+B -> FE : Evento de cierre
+FE -> API : DELETE /sesiones/actual\nAuthorization: Bearer <token>
+activate API
+API -> DB : UPDATE sesiones SET revocada = true WHERE id = :sid;\nINSERT eventos_bitacora (accion=cierre_sesion, resultado=exitoso)
+API --> FE : 204 No Content
+deactivate API
+FE -> FE : Borra el token de memoria
+FE --> B : Regresa a la pantalla de inicio de sesión
+
+note over FE, API
+  Cualquier solicitud posterior con el token revocado
+  recibe 401 (RF-26-AC-5), aunque el JWT no haya expirado.
+end note
+
+@enduml

@@ -1,0 +1,118 @@
+' SGPIS: diagrama de componentes
+' Dos vistas en un mismo archivo:
+'   1) C4 nivel 2 (contenedores): frontend, backend, base de datos, almacenamiento y sus interfaces.
+'   2) C4 nivel 3 (componentes de la API): módulos y capas internas del backend.
+' Estilo: cliente-servidor con backend monolítico modular en capas (decision_arquitectonica.md, ADR-001).
+' Fuentes: SRS_final.md v1.4, stack_decision.md. Revisión de la propuesta del agente: evidencia_agente/componentes_agente.puml.
+
+@startuml diagrama_componentes
+!include <C4/C4_Container>
+
+title SGPIS: diagrama de contenedores (C4 nivel 2)
+
+LAYOUT_TOP_DOWN()
+
+Person(coord, "Coordinación AMPIP", "Catálogo, generaciones, parques, usuarios y asignaciones; avance y reportes. No abre evidencias de seguridad (RNF-02).")
+Person(dg, "Director General AMPIP", "Firma el dictamen (RF-14).")
+Person(appi, "APPI", "Autoevalúa y sube evidencias, muchas veces desde el celular (RNF-09).")
+Person(consultor, "Consultor", "Asignado: revisa, califica y emite Opiniones. De comité: lectura temporal del expediente (RF-13).")
+Person(corp, "Gerente corporativo", "Solo lectura del avance de los parques de su desarrollador (RF-23).")
+Person(admin, "Administrador técnico", "Usa las herramientas técnicas por SSH (RF-03-AC-3). Su cuenta en la aplicación no ve parques ni evidencias (RNF-02).")
+
+System_Boundary(sgpis, "SGPIS") {
+  Container(spa, "Aplicación web (SPA)", "React 18, TypeScript 5, Vite 5, Tailwind CSS", "Formularios, tablas y gráficas simples. Guarda el token solo en memoria. No decide permisos: lo que oculta, la API lo vuelve a negar.")
+  Container(api, "API REST", "Python 3.12, FastAPI, Uvicorn, Pydantic v2, SQLAlchemy 2.0", "Monolito modular en capas. Implementa el contrato openapi.yaml (/api/v1). Único punto de autorización (RNF-01, RNF-02, RNF-04). Sirve el contenido de evidencias; nunca expone el bucket.")
+  Container(worker, "Worker", "Python 3.12, misma imagen que la API", "Revisión diaria de plazos a las 00:00 de Ciudad de México (RF-09, RF-30, RNF-11). Despacha la outbox de correo con 3 reintentos (RNF-12). Respaldo diario (RNF-13) y depuración (RNF-14).")
+  ContainerDb(db, "Base de datos", "PostgreSQL 16", "Dominio, sesiones, outbox de correo. Bitácora de solo append: el usuario de la aplicación no tiene UPDATE ni DELETE sobre ella (RNF-03).")
+  ContainerDb(objetos, "Almacenamiento de evidencias", "Objetos compatible con S3, bucket privado", "Archivos de hasta 100 MB (RF-06). Región fija (RNF-05). Sin acceso público.")
+  ContainerDb(respaldos, "Almacenamiento de respaldos", "Bucket separado, mismo proveedor y región", "Volcado diario de PostgreSQL y copia de evidencias; retención de 30 días (RNF-13).")
+}
+
+System_Ext(correo, "Servicio de correo transaccional", "SMTP con TLS. Cobro por volumen, no por usuario (RD-12).")
+System_Ext(monitoreo, "Monitoreo externo", "Health check cada 5 minutos; historial de disponibilidad mensual (RNF-08).")
+
+Rel(coord, spa, "Usa", "HTTPS")
+Rel(dg, spa, "Firma dictámenes", "HTTPS")
+Rel(appi, spa, "Autoevalúa y sube evidencias", "HTTPS, Chrome o Safari")
+Rel(consultor, spa, "Revisa, califica, emite Opiniones", "HTTPS")
+Rel(corp, spa, "Consulta avance consolidado", "HTTPS")
+
+Rel(spa, api, "Llama al contrato openapi.yaml: JSON y multipart; Authorization: Bearer JWT {sub, sid}", "HTTPS, REST /api/v1")
+Rel(api, db, "Lee y escribe; valida la sesión en cada solicitud; bitácora y outbox en la misma transacción", "SQL, TCP 5432")
+Rel(api, objetos, "Guarda y lee archivos; toda descarga pasa por la API y queda en bitácora", "API S3, HTTPS")
+Rel(worker, db, "Marca atrasos, consume la outbox, registra su última corrida", "SQL, TCP 5432")
+Rel(worker, objetos, "Lee para respaldo; depura lo elegible (RNF-14)", "API S3, HTTPS")
+Rel(worker, respaldos, "Escribe pg_dump y copia de evidencias", "API S3, HTTPS")
+Rel(worker, correo, "Envía invitaciones, recuperación, observaciones y avisos", "SMTP TLS 587")
+Rel(monitoreo, api, "GET /api/v1/salud cada 5 min: API, base de datos y última corrida del worker", "HTTPS")
+Rel(monitoreo, admin, "Alerta de caída o de worker sin correr en 24 h", "Correo")
+Rel_L(admin, worker, "Despliega, restaura respaldos, revisa registros (fuera de la aplicación)", "SSH al servidor")
+
+SHOW_LEGEND()
+@enduml
+
+@startuml diagrama_componentes_api
+!include <C4/C4_Component>
+
+title SGPIS: componentes de la API REST y del worker (C4 nivel 3)
+
+LAYOUT_TOP_DOWN()
+
+Container(spa, "Aplicación web (SPA)", "React")
+ContainerDb(db, "Base de datos", "PostgreSQL 16")
+ContainerDb(objetos, "Almacenamiento de evidencias", "Bucket S3 privado")
+System_Ext(correo, "Correo transaccional", "SMTP")
+
+Container_Boundary(api, "API REST (FastAPI)") {
+  Component(routers, "Routers /api/v1", "FastAPI APIRouter + esquemas Pydantic", "Capa API. Un router por grupo de recursos del contrato. Solo traduce HTTP; los errores salen con el esquema Error.")
+  Component(sesion, "Autenticación y sesión", "Dependencia FastAPI", "Verifica el JWT, busca la sesión sid, rechaza si está revocada o lleva 60 min sin actividad y actualiza la última actividad (RF-26).")
+  Component(authz, "Autorización por parque", "Dependencia FastAPI", "Lee rol, asignaciones y sesión de comité abierta desde la base. Decide RNF-01, RNF-02 y RNF-04 en un solo lugar.")
+
+  Component(m_cat, "Módulo catálogo", "Servicio de dominio", "Versiones, criterios, marcas O/R/NA, evidencia suficiente (RF-01, RF-24, RF-25).")
+  Component(m_org, "Módulo organización", "Servicio de dominio", "Generaciones, parques, tipo de PI, usuarios, asignaciones, historial (RF-02, RF-03, RF-10, RF-11, RF-28 a RF-31).")
+  Component(m_exp, "Módulo expediente", "Servicio de dominio", "Autoevaluación, evidencias, calificación con sus dos máquinas de estado, plan de trabajo, análisis de riesgos, cumplimiento (RF-04 a RF-09, RF-16, RF-17, RF-27).")
+  Component(m_dic, "Módulo dictamen", "Servicio de dominio", "Opiniones, elegibilidad, sesión de comité, dictamen y las tres condiciones de RD-09 (RF-12 a RF-15).")
+  Component(m_rep, "Módulo reportes", "Consultas de solo lectura", "Avance de parques, reporte mensual, portafolio corporativo (RF-07, RF-21, RF-23).")
+  Component(bitacora, "Bitácora", "Servicio transversal", "Registra cada operación sobre evidencias en la misma transacción (RNF-03).")
+
+  Component(repos, "Repositorios", "SQLAlchemy 2.0", "Acceso a datos por módulo. Un módulo no lee tablas de otro.")
+  Component(almacen, "Adaptador de almacenamiento", "Cliente S3", "Guarda y lee archivos; mide el tamaño de la parte archivo (RF-06).")
+  Component(outbox, "Outbox de correo", "Tabla en PostgreSQL", "Los módulos encolan avisos dentro de su transacción.")
+}
+
+Container_Boundary(wk, "Worker (misma imagen)") {
+  Component(plazos, "Revisión diaria de plazos", "Tarea programada 00:00 America/Mexico_City", "Marca atrasos de criterios y de actualización anual (RF-09-AC-2, RF-30-AC-2).")
+  Component(despacho, "Despachador de correo", "Tarea periódica", "Envía la outbox; 3 reintentos y registro de falla (RNF-12).")
+  Component(resp, "Respaldo y depuración", "Tarea programada 02:00", "pg_dump y copia de evidencias (RNF-13); depuración a 6 años (RNF-14).")
+}
+
+Rel(spa, routers, "HTTPS, JSON / multipart")
+Rel(routers, sesion, "Depende de")
+Rel(routers, authz, "Depende de")
+Rel(routers, m_cat, "Llama")
+Rel(routers, m_org, "Llama")
+Rel(routers, m_exp, "Llama")
+Rel(routers, m_dic, "Llama")
+Rel(routers, m_rep, "Llama")
+Rel(m_exp, m_cat, "Consulta marcas O/R/NA")
+Rel(m_dic, m_exp, "Consulta estados y cumplimiento")
+Rel(m_exp, bitacora, "Registra")
+Rel(m_exp, almacen, "Guarda y lee archivos")
+Rel(m_exp, outbox, "Encola aviso de observación")
+Rel(m_org, outbox, "Encola invitación")
+Rel(m_cat, repos, "Usa")
+Rel(m_org, repos, "Usa")
+Rel(m_exp, repos, "Usa")
+Rel(m_dic, repos, "Usa")
+Rel(m_rep, repos, "Usa")
+Rel(sesion, repos, "Usa")
+Rel(authz, repos, "Usa")
+Rel(repos, db, "SQL")
+Rel(almacen, objetos, "API S3")
+Rel(plazos, db, "SQL")
+Rel(despacho, db, "Lee outbox")
+Rel(despacho, correo, "SMTP TLS")
+Rel(resp, db, "pg_dump")
+
+SHOW_LEGEND()
+@enduml

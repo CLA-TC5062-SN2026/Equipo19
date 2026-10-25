@@ -1,0 +1,28 @@
+
+@startuml
+title SGPIS - Autenticación de usuario
+
+autonumber
+
+actor "Cliente (Browser)" as Browser
+participant "Frontend" as Frontend
+participant "Backend API" as API
+database "PostgreSQL" as DB
+
+Browser -> Frontend: Ingresar correo y contraseña
+Frontend -> API: POST /auth/login\n{email, password}
+
+API -> DB: Buscar usuario por correo
+DB --> API: Datos del usuario y hash de contraseña
+
+alt Usuario existente y contraseña válida
+    API -> API: Verificar hash de contraseña
+    API -> API: Generar JWT con identidad, rol y expiración
+    API --> Frontend: 200 OK\n{access_token, token_type}
+    Frontend --> Browser: Mostrar acceso autorizado
+else Credenciales inválidas
+    API --> Frontend: 401 Unauthorized
+    Frontend --> Browser: Mostrar error de autenticación
+end
+
+@enduml

@@ -1,0 +1,114 @@
+@startuml secuencia_flujo2
+title SGPIS · Flujo 2: carga de evidencia por la APPI y calificación del criterio por el consultor asignado\n(RF-05, RF-06, RF-17, RF-27; contrato openapi.yaml v1.1.0, base /api/v1)
+
+autonumber
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 270
+
+actor "Cliente\n(Browser)" as C
+participant "Frontend\n(React SPA)" as F
+participant "Backend API\n(FastAPI)" as API
+database "Base de datos\n(PostgreSQL)" as DB
+
+note over F, DB
+  Todas las solicitudes llevan Authorization: Bearer <JWT> y pasan por la
+  validación de sesión del flujo 1 (SELECT/UPDATE sesiones). Se omite aquí.
+end note
+
+== Parte A. La APPI sube la evidencia: POST /parques/{parqueId}/criterios/{criterioId}/evidencias ==
+
+C -> F : APPI elige el criterio 2.8, la fase\n"implementacion_estandares" y el archivo (PDF, 5 MB)
+F -> F : Genera Idempotency-Key (UUID) para esta carga
+F -> API : POST /api/v1/parques/{parqueId}/criterios/{criterioId}/evidencias\nIdempotency-Key: <uuid>\nmultipart/form-data {archivo, fase}
+API -> DB : SELECT rol, parque_id FROM usuarios WHERE id = :sub
+DB --> API : rol APPI, parque del usuario
+
+alt el usuario no es APPI de ese parque (consultor, Coordinación, gerente corporativo, otro parque)
+  API --> F : 403 Error {codigo: "sin_permiso"}  (RF-23-AC-2, RNF-01)
+else APPI del parque
+  API -> DB : SELECT hash_solicitud, evidencia_id FROM idempotencia\nWHERE usuario_id = :sub AND clave = :key AND creada > now() - 24 h
+  DB --> API : registro previo (o ninguno)
+
+  alt reintento con la misma clave y el mismo cuerpo
+    API --> F : 200 OK Evidencia (la ya creada; no se duplica ni se repite el efecto sobre el criterio)
+  else carga nueva
+    API -> API : Mide la parte "archivo" mientras lee el stream\ny revisa extensión y tipo MIME
+
+    alt archivo > 104,857,600 bytes (RF-06-AC-1)
+      API --> F : 413 Error {codigo: "archivo_excede_limite",\nmensaje: "El archivo supera el límite de 100 MB"}
+    else video o formato fuera de PDF, JPG, PNG, HEIC, XLSX, DOCX (RF-06-AC-4, AC-5)
+      API --> F : 422 Error {codigo: "formato_video_no_permitido" | "formato_no_permitido", mensaje literal del SRS}
+    else archivo válido (≤ 100 MB, incluido exactamente 100 MB; RF-06-AC-2, AC-3)
+      API -> DB : SELECT marca, estado_calificacion FROM criterios_parque\nWHERE parque_id = :parqueId AND criterio_id = :criterioId
+      DB --> API : marca "O", estado "pendiente"
+
+      alt el criterio es NA para el tipo de PI del parque
+        API --> F : 422 Error {codigo: "criterio_no_aplica",\nmensaje: "Este criterio no aplica al tipo de PI del parque"}
+      else criterio aplicable
+        API -> DB : BEGIN
+        API -> DB : INSERT INTO evidencias (..., estado = 'enviada', autor_id, fecha_carga, ruta_archivo)
+        API -> DB : UPDATE criterios_parque SET estado_calificacion = 'en_revision'\nWHERE estado_calificacion IN ('pendiente', 'cumplido', 'no_cumplido')
+        note right of DB
+          Transición automática del criterio:
+          pendiente → en revisión (RF-27-AC-4)
+          cumplido o no cumplido → en revisión (RF-27-AC-7)
+        end note
+        API -> DB : INSERT INTO bitacora (usuario, fecha, 'subir_evidencia', evidencia_id)  (RNF-03)
+        API -> DB : INSERT INTO idempotencia (usuario_id, clave, hash_solicitud, evidencia_id)
+        API -> DB : COMMIT
+        DB --> API : ok
+        API --> F : 201 Created\nLocation: /api/v1/evidencias/{evidenciaId}\nEvidencia {estado: "enviada", estadoCriterio: "en_revision", ...}
+        F --> C : Muestra la evidencia "enviada" y el criterio "en revisión"
+      end
+    end
+  end
+end
+
+== Parte B. El consultor asignado acepta la evidencia: PATCH /evidencias/{evidenciaId} (RF-27-AC-1, AC-5) ==
+
+C -> F : Consultor asignado abre la evidencia y la marca como suficiente
+F -> API : PATCH /api/v1/evidencias/{evidenciaId}\n{estado: "aceptada"}
+API -> DB : SELECT e.estado, e.parque_id, a.consultor_id\nFROM evidencias e JOIN asignaciones_consultor a\nON a.parque_id = e.parque_id AND a.vigente_hasta IS NULL\nWHERE e.id = :evidenciaId
+DB --> API : evidencia "enviada", consultor vigente
+
+alt el usuario no es el consultor asignado vigente (incluida la APPI)
+  API --> F : 403 Error {codigo: "sin_permiso"}
+else la evidencia no está "enviada" (ya aceptada u observada)
+  API --> F : 409 Error {codigo: "evidencia_no_enviada"}
+else
+  API -> DB : UPDATE evidencias SET estado = 'aceptada' WHERE id = :evidenciaId
+  API -> DB : INSERT INTO bitacora (usuario, fecha, 'modificar_evidencia', evidencia_id)
+  DB --> API : ok
+  API --> F : 200 OK Evidencia {estado: "aceptada"}
+end
+
+== Parte C. El consultor califica el criterio: PATCH /parques/{parqueId}/criterios/{criterioId} (RF-27-AC-2, AC-3; RF-17) ==
+
+C -> F : Consultor califica el criterio como "cumplido"
+F -> API : PATCH /api/v1/parques/{parqueId}/criterios/{criterioId}\n{estadoCalificacion: "cumplido"}
+API -> DB : SELECT cp.estado_calificacion, c.estandar,\n  (SELECT count(*) FROM evidencias WHERE ... AND estado = 'aceptada') AS aceptadas,\n  (SELECT id FROM revisiones_analisis_riesgos WHERE parque_id = :parqueId\n     AND ciclo = ciclo_actual ORDER BY fecha DESC LIMIT 1) AS revision_vigente\nFROM criterios_parque cp JOIN criterios c ON ...
+DB --> API : estado, estándar, aceptadas, revisión vigente
+
+alt el usuario no es el consultor asignado (RF-27-AC-5)
+  API --> F : 403 Error {codigo: "sin_permiso"}
+else estado actual distinto de "en_revision"
+  API --> F : 409 Error {codigo: "transicion_invalida"}
+else aceptadas = 0
+  API --> F : 422 Error {codigo: "sin_evidencia_aceptada"}
+else estándar 2, 3 o 7 sin revisión vigente del ciclo actual (RF-17-AC-1, RF-27-AC-3)
+  API --> F : 422 Error {codigo: "analisis_riesgos_no_vigente",\nmensaje: "No se puede calificar este criterio sin un análisis de riesgos vigente"}
+  note right of F : El criterio conserva "en revisión".
+else se cumplen las condiciones (RF-17-AC-2, RF-27-AC-2)
+  API -> DB : UPDATE criterios_parque SET estado_calificacion = 'cumplido',\n  fecha_ultimo_cambio = now(), registrado_por = :sub
+  DB --> API : ok
+  API --> F : 200 OK CriterioParque {estadoCalificacion: "cumplido", fechaUltimoCambio, registradoPor}
+  F -> API : GET /api/v1/parques/{parqueId}/cumplimiento
+  API -> DB : Cuenta O y O+R aplicables y "cumplido" (RD-02)
+  DB --> API : conteos
+  API --> F : 200 OK Cumplimiento {total, porEstandar}: % de obligatorios y avance general  (RF-08)
+  F --> C : Muestra el criterio "cumplido" y el porcentaje actualizado
+end
+
+@enduml

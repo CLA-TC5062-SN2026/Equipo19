@@ -1,0 +1,395 @@
+@startuml
+title SGPIS - Propuesta de diagrama de clases de dominio
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam linetype ortho
+hide empty members
+
+package "Identidad y acceso" {
+  class Usuario {
+    +id: UUID
+    +correo: String
+    +estado: EstadoUsuario
+    +fechaAlta: DateTime
+  }
+
+  class Rol {
+    +id: UUID
+    +nombre: NombreRol
+  }
+
+  class VinculoAPPI {
+    +id: UUID
+    +activo: Boolean
+    +esContactoPrincipal: Boolean
+  }
+
+  class AsignacionConsultor {
+    +id: UUID
+    +fechaInicio: Date
+    +fechaFin: Date [0..1]
+  }
+
+  class SesionComite {
+    +id: UUID
+    +fechaApertura: DateTime
+    +fechaCierre: DateTime [0..1]
+  }
+
+  class AccesoComite {
+    +id: UUID
+    +soloLectura: Boolean
+    +fechaFinAcceso: DateTime
+  }
+
+  enum EstadoUsuario {
+    pendiente_activacion
+    activo
+    inactivo
+  }
+
+  enum NombreRol {
+    coordinacion_ampip
+    director_general_ampip
+    appi
+    consultor_asignado
+    consultor_comite
+    gerente_corporativo
+    administrador_tecnico
+  }
+}
+
+package "Catalogo y parques" {
+  class Desarrollador {
+    +id: UUID
+    +nombre: String
+  }
+
+  class Parque {
+    +id: UUID
+    +nombre: String
+    +region: String
+    +tipoActual: TipoPI
+    +estado: EstadoParque
+    +fechaAlta: Date
+    +fechaTermino: Date [0..1]
+    +fechaProximaActualizacion: Date [0..1]
+  }
+
+  class Generacion {
+    +id: UUID
+    +nombre: String
+    +fechaInicio: Date
+  }
+
+  class VersionCatalogo {
+    +id: UUID
+    +identificador: String
+    +vigente: Boolean
+  }
+
+  class Estandar {
+    +id: UUID
+    +numero: String
+    +nombre: String
+  }
+
+  class Subestandar {
+    +id: UUID
+    +numero: String
+    +nombre: String
+  }
+
+  class Criterio {
+    +id: UUID
+    +numero: String
+    +descripcion: Text
+    +metodoVerificacion: Text
+    +evidenciaSuficiente: Text [0..1]
+  }
+
+  class MarcaCriterioTipo {
+    +id: UUID
+    +tipoPI: TipoPI
+    +marca: MarcaAplicabilidad
+  }
+
+  enum TipoPI {
+    construccion_abierto
+    construccion_cerrado
+    operacion_abierto
+    operacion_cerrado
+  }
+
+  enum MarcaAplicabilidad {
+    O
+    R
+    NA
+  }
+
+  enum EstadoParque {
+    activo
+    inactivo
+    historico
+  }
+}
+
+package "Expediente y evidencias" {
+  class Expediente {
+    +id: UUID
+    +tipoPIEvaluado: TipoPI
+    +fechaInicio: Date
+  }
+
+  class EvaluacionCriterio {
+    +id: UUID
+    +marcaAplicable: MarcaAplicabilidad
+    +estado: EstadoCalificacion
+    +fechaUltimoCambio: DateTime
+    +motivoReapertura: Text [0..1]
+  }
+
+  class Evidencia {
+    +id: UUID
+    +nombreOriginal: String
+    +tipoArchivo: String
+    +tamanoBytes: Long
+    +referenciaObjeto: URI
+    +numeroVersion: Integer
+    +fechaCarga: DateTime
+    +fechaVencimiento: Date [0..1]
+    +eliminada: Boolean
+  }
+
+  class EvidenciaCriterio {
+    +id: UUID
+    +estado: EstadoEvidencia
+    +vigente: Boolean
+  }
+
+  class Observacion {
+    +id: UUID
+    +motivo: Text
+    +fecha: DateTime
+  }
+
+  class PlanTrabajo {
+    +id: UUID
+    +fechaComprometida: Date
+    +atrasado: Boolean
+  }
+
+  class RevisionAnalisisRiesgos {
+    +id: UUID
+    +fechaRevision: Date
+    +version: String
+    +firmante: String
+    +resumen: Text
+    +ciclo: String
+    +vigente: Boolean
+    +referenciaDocumento: URI [0..1]
+  }
+
+  class DefinicionFase {
+    +id: UUID
+    +nombre: String
+    +orden: Integer
+  }
+
+  class FaseExpediente {
+    +id: UUID
+    +estado: EstadoFase
+    +motivoExcepcion: Text [0..1]
+    +fechaCambio: DateTime
+  }
+
+  enum EstadoCalificacion {
+    pendiente
+    en_revision
+    cumplido
+    no_cumplido
+  }
+
+  enum EstadoEvidencia {
+    enviada
+    observada
+    aceptada
+  }
+
+  enum EstadoFase {
+    pendiente
+    en_proceso
+    completada
+    avanzada_por_excepcion
+  }
+}
+
+package "Cumplimiento y auditoria" {
+  class OpinionCumplimiento {
+    +id: UUID
+    +tipo: TipoOpinion
+    +fechaEmision: DateTime
+    +porcentajeObligatorios: Decimal
+    +porcentajeAvanceGeneral: Decimal
+    +favorable: Boolean [0..1]
+  }
+
+  class EvaluacionDesempeno {
+    +id: UUID
+    +folio: String
+    +fecha: Date
+    +resultado: Text
+    +referenciaArchivo: URI [0..1]
+  }
+
+  class Dictamen {
+    +id: UUID
+    +resultado: ResultadoDictamen
+    +motivo: Text
+    +estado: EstadoDictamen
+    +fechaCaptura: DateTime
+    +fechaFirma: DateTime [0..1]
+  }
+
+  class Distintivo {
+    +id: UUID
+    +fechaInicioVigencia: Date
+    +fechaVencimiento: Date
+    +estado: EstadoDistintivo
+  }
+
+  class EventoBitacora {
+    +id: UUID
+    +fechaHora: DateTime
+    +rol: NombreRol [0..1]
+    +accion: String
+    +recurso: String
+    +resultado: String
+  }
+
+  enum TipoOpinion {
+    intermedia
+    final
+  }
+
+  enum ResultadoDictamen {
+    otorgar
+    no_otorgar
+  }
+
+  enum EstadoDictamen {
+    borrador
+    firmado
+  }
+
+  enum EstadoDistintivo {
+    vigente
+    proximo_a_vencer
+    vencido
+    en_renovacion
+    con_prorroga_autorizada
+  }
+}
+
+Usuario "0..*" --> "1" Rol : tiene >
+Desarrollador "1" <-- "0..*" Parque : pertenece a
+Parque "1" -- "0..*" VinculoAPPI
+Usuario "1" -- "0..*" VinculoAPPI : usuario APPI >
+
+VersionCatalogo "1" *-- "1..*" Estandar
+Estandar "1" *-- "1..*" Subestandar
+Subestandar "1" *-- "1..*" Criterio
+Criterio "1" *-- "4" MarcaCriterioTipo
+
+Parque "1" -- "0..*" Expediente
+Generacion "1" -- "0..*" Expediente
+VersionCatalogo "1" <-- "0..*" Generacion : usa
+Expediente "1" *-- "1..*" EvaluacionCriterio
+Criterio "1" <-- "0..*" EvaluacionCriterio : evalua
+
+Expediente "1" -- "0..*" AsignacionConsultor
+Usuario "1" -- "0..*" AsignacionConsultor : consultor >
+Expediente "1" *-- "0..*" RevisionAnalisisRiesgos
+Expediente "1" *-- "9" FaseExpediente
+DefinicionFase "1" <-- "0..*" FaseExpediente : define
+
+Usuario "1" <-- "0..*" Evidencia : carga
+Evidencia "0..1" --> "0..1" Evidencia : versionAnterior
+Evidencia "1" -- "1..*" EvidenciaCriterio
+EvaluacionCriterio "1" <-- "0..*" EvidenciaCriterio : vincula
+EvidenciaCriterio "1" *-- "0..*" Observacion
+Usuario "1" <-- "0..*" Observacion : registra
+EvaluacionCriterio "1" *-- "0..1" PlanTrabajo
+Usuario "1" <-- "0..*" PlanTrabajo : responsable APPI
+
+Expediente "1" *-- "0..2" OpinionCumplimiento
+Usuario "1" <-- "0..*" OpinionCumplimiento : emite
+Expediente "1" *-- "0..1" EvaluacionDesempeno
+Usuario "1" <-- "0..*" EvaluacionDesempeno : registra
+VersionCatalogo "1" <-- "0..*" EvaluacionDesempeno : version usada
+Expediente "1" *-- "0..1" SesionComite
+SesionComite "1" *-- "0..1" AccesoComite
+Usuario "1" <-- "0..*" AccesoComite : consultor de comite
+Expediente "1" *-- "0..1" Dictamen
+Usuario "0..1" <-- "0..*" Dictamen : firma
+Dictamen "1" -- "0..1" Distintivo : origina al otorgar firmado
+
+Usuario "0..1" <-- "0..*" EventoBitacora : ejecuta
+Parque "0..1" <-- "0..*" EventoBitacora : afecta
+
+note bottom of Expediente
+Un expediente representa la participacion
+de un parque en una generacion. La unicidad
+(parque, generacion) es una restriccion derivada
+de RF-28, RF-31 y RF-32.
+end note
+
+note bottom of EvidenciaCriterio
+Clase de asociacion: un archivo puede vincularse
+a varios criterios y cada vinculo se revisa
+de forma independiente (RF-05-AC-7).
+end note
+
+note right of EvidenciaCriterio
+<<constraint>> MismoExpediente:
+una Evidencia solo puede vincularse con
+EvaluacionCriterio del mismo Expediente.
+Puede vincularse con varios criterios de
+ese unico expediente (RF-05-AC-7).
+end note
+
+note bottom of VinculoAPPI
+Restriccion: por parque hay como maximo un
+vinculo activo con esContactoPrincipal = true.
+Puede no haberlo tras una baja (RF-34).
+end note
+
+note bottom of AsignacionConsultor
+Restriccion: por expediente hay como maximo
+una asignacion vigente (fechaFin nula).
+Las asignaciones cerradas conservan historial.
+end note
+
+note bottom of OpinionCumplimiento
+Restriccion: maximo una opinion final por
+expediente; favorable solo aplica a la final.
+end note
+
+note bottom of SesionComite
+El acceso es opcional mientras no se confirme
+la asignacion del consultor de comite. Si existe,
+es temporal y de solo lectura (RF-13).
+end note
+
+note bottom of Distintivo
+Asociacion, no composicion: conserva su vigencia,
+estado y renovacion despues del dictamen inicial.
+Solo un dictamen otorgar firmado puede originarlo.
+end note
+
+note bottom of EventoBitacora
+Solo append (RNF-03). La asociacion al usuario
+o parque es opcional para eventos donde no aplica.
+end note
+@enduml

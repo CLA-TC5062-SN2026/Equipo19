@@ -1,0 +1,55 @@
+@startuml
+title SGPIS - Registro de parque industrial
+
+actor "Coordinacion AMPIP" as Coordinacion
+participant "Browser" as Browser
+participant "Frontend\nReact" as Frontend
+participant "Backend API\nFastAPI" as Backend
+database "PostgreSQL" as Database
+
+autonumber
+
+Coordinacion -> Browser : Captura nombre, desarrollador, tipo PI,\nregion y generacion
+Browser -> Frontend : Envia formulario de alta
+Frontend -> Backend : POST /parques
+activate Backend
+note right
+Authorization: Bearer JWT
+Body: nombre, desarrolladorId, tipoPI,
+region, generacionId
+end note
+
+Backend -> Backend : Valida JWT y rol Coordinacion AMPIP
+alt Token ausente, invalido o expirado
+  Backend --> Frontend : 401 Unauthorized
+  Frontend --> Browser : Muestra inicio de sesion
+else Rol sin permiso
+  Backend --> Frontend : 403 Forbidden
+  Frontend --> Browser : Muestra error de permisos
+else Autorizado
+  Backend -> Backend : Valida campos requeridos, tipo PI y region
+  alt Tipo PI o region invalida
+    Backend --> Frontend : 422 Unprocessable Entity
+    Frontend --> Browser : Muestra error de validacion
+  else Datos de parque validos
+    Backend -> Database : Verifica generacionId existente
+    alt Generacion inexistente
+      Database --> Backend : Sin resultado
+      Backend --> Frontend : 422 Unprocessable Entity
+      Frontend --> Browser : Muestra error de generacion
+    else Generacion existente
+      Database --> Backend : Generacion valida
+      Backend -> Database : INSERT parque\nestado=activo, fechaAlta=fecha actual
+      Database --> Backend : Parque creado (parqueId)
+      Backend --> Frontend : 201 Created (Park)
+      Frontend --> Browser : Confirma alta y muestra parque activo
+    end
+  end
+end
+deactivate Backend
+
+note bottom
+Representa RF-02-AC-1, RF-02-AC-2, RF-02-AC-3 y RF-28-AC-3.
+El endpoint y respuestas provienen de POST /parques en openapi.yaml.
+end note
+@enduml

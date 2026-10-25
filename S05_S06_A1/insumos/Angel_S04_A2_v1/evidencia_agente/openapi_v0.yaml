@@ -1,0 +1,3643 @@
+openapi: 3.0.3
+info:
+  title: SGPIS API
+  version: 0.1.0
+  description: |
+    API REST del backend de SGPIS (Sistema de Gestión del Programa Parque Industrial Seguro, AMPIP).
+    Backend en Python 3.12 + FastAPI con PostgreSQL 16; la consume una SPA en React.
+
+    Alcance: requerimientos funcionales del SRS v1.4 con prioridad "MVP feb-2027" y "2027".
+    Quedan fuera los RF con prioridad "Posterior" (RF-18, RF-19, RF-20, RF-22).
+
+    Convenciones:
+    - Todas las fechas de negocio se interpretan en America/Mexico_City (RNF-11).
+    - Toda operación sobre evidencias genera un registro de bitácora de solo append (RNF-03).
+    - Los errores siguen el esquema `Error`; el campo `mensaje` lleva el texto literal que exige el SRS.
+    - Cada operación declara en `x-acceptance-criteria` los criterios de aceptación del SRS que satisface.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Entorno local (docker compose)
+  - url: https://sgpis.example.mx/api/v1
+    description: Producción
+security:
+  - bearerAuth: []
+tags:
+  - name: Autenticación
+    description: Inicio y cierre de sesión, recuperación de contraseña (RF-26).
+  - name: Catálogo
+    description: Versiones del catálogo de criterios, evidencia suficiente y descarga del archivo maestro (RF-01, RF-24, RF-25).
+  - name: Generaciones
+    description: Generaciones del programa (RF-28).
+  - name: Parques
+    description: Alta, baja, tipo de PI, fechas del programa e historial de parques (RF-02, RF-11, RF-29, RF-30, RF-31).
+  - name: Usuarios
+    description: Alta, roles y baja de usuarios (RF-03, RF-29).
+  - name: Asignaciones
+    description: Asignación y reasignación de consultores a parques (RF-10).
+  - name: Autoevaluación
+    description: Autoevaluación de diagnóstico filtrada por tipo de PI (RF-04, RF-25).
+  - name: Criterios del parque
+    description: Estado de calificación de cada criterio por parque y su máquina de estados (RF-07, RF-17, RF-27).
+  - name: Evidencias
+    description: Carga, observación, aceptación y consulta de evidencias (RF-05, RF-06, RF-07, RF-27).
+  - name: Cumplimiento
+    description: Cálculo de cumplimiento de obligatorios y avance general (RF-08).
+  - name: Plan de trabajo
+    description: Plan de trabajo por criterio y detección de atraso (RF-09).
+  - name: Análisis de riesgos
+    description: Registro de revisión del análisis de riesgos y documento opcional (RF-16).
+  - name: Opiniones de Cumplimiento
+    description: Opinión intermedia y final del consultor asignado (RF-12).
+  - name: Comité
+    description: Sesiones de comité, validación del expediente y acceso temporal del consultor de comité (RF-13, RF-15).
+  - name: Dictámenes
+    description: Captura y firma del dictamen (RF-14).
+  - name: Reportes
+    description: Vista de avance para AMPIP, reporte mensual de Dirección y vista corporativa (RF-07, RF-21, RF-23, RF-30).
+
+paths:
+  # ---------------------------------------------------------------- Autenticación
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      operationId: iniciarSesion
+      summary: Iniciar sesión
+      description: |
+        Autentica con correo y contraseña y entrega un token JWT de sesión que expira tras 60 minutos de inactividad.
+        Tras 5 intentos fallidos consecutivos la cuenta se bloquea 15 minutos, aun con la contraseña correcta.
+      security: []
+      x-acceptance-criteria: [RF-26-AC-1, RF-26-AC-2, RF-26-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Credenciales válidas; se entrega el token de sesión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: 'Credenciales inválidas ("Correo o contraseña incorrectos") o cuenta bloqueada ("Cuenta bloqueada temporalmente; intente de nuevo en 15 minutos").'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      operationId: cerrarSesion
+      summary: Cerrar sesión
+      description: Invalida el token de la sesión actual; cualquier solicitud posterior con ese token responde 401.
+      x-acceptance-criteria: [RF-26-AC-5]
+      responses:
+        '204':
+          description: Sesión cerrada y token invalidado.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/recuperacion:
+    post:
+      tags: [Autenticación]
+      operationId: solicitarRecuperacionContrasena
+      summary: Solicitar enlace de recuperación de contraseña
+      description: |
+        Envía por correo un enlace de recuperación de un solo uso con vigencia de 30 minutos.
+        Responde 202 aunque el correo no exista, para no revelar qué cuentas están registradas.
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecuperacionRequest'
+      responses:
+        '202':
+          description: Solicitud aceptada; si la cuenta existe se envía el enlace.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/recuperacion/confirmar:
+    post:
+      tags: [Autenticación]
+      operationId: restablecerContrasena
+      summary: Restablecer contraseña con enlace de recuperación
+      description: Usa el token del enlace de recuperación para fijar una contraseña nueva. El token deja de funcionar a los 30 minutos o tras su primer uso.
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestablecerContrasenaRequest'
+      responses:
+        '200':
+          description: Contraseña actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensaje'
+        '400':
+          description: Token de recuperación expirado o ya utilizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      operationId: obtenerSesionActual
+      summary: Consultar el usuario de la sesión actual
+      description: Devuelve el usuario autenticado y sus roles. Si la sesión lleva 60 minutos sin actividad responde 401 y el cliente debe iniciar sesión de nuevo.
+      x-acceptance-criteria: [RF-26-AC-6]
+      responses:
+        '200':
+          description: Usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Catálogo
+  /catalogo/versiones:
+    get:
+      tags: [Catálogo]
+      operationId: listarVersionesCatalogo
+      summary: Listar versiones del catálogo
+      description: Lista las versiones cargadas del catálogo e indica cuál está vigente. Solo Coordinación AMPIP.
+      x-acceptance-criteria: [RF-01-AC-1]
+      responses:
+        '200':
+          description: Versiones del catálogo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VersionCatalogo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Catálogo]
+      operationId: cargarVersionCatalogo
+      summary: Cargar una nueva versión del catálogo desde CSV
+      description: |
+        Coordinación AMPIP sube un CSV con las columnas `estandar, subestandar, criterio, metodo_verificacion,
+        marca_construccion_abierto, marca_construccion_cerrado, marca_operacion_abierto, marca_operacion_cerrado`.
+        El sistema valida columnas y marcas (O, R o NA); si hay cualquier error rechaza el archivo completo
+        indicando fila y columna, y no crea ninguna versión. Si es válido, crea la versión y la marca como vigente.
+        Cualquier otro rol recibe 403.
+      x-acceptance-criteria: [RF-01-AC-1, RF-01-AC-2, RF-01-AC-4]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CargaCatalogoRequest'
+      responses:
+        '201':
+          description: Versión creada y marcada como vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionCatalogo'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: El archivo tiene una columna faltante o una marca distinta de O, R o NA. `detalles` indica fila y columna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /catalogo/versiones/{versionId}:
+    get:
+      tags: [Catálogo]
+      operationId: obtenerVersionCatalogo
+      summary: Consultar una versión del catálogo
+      description: Devuelve los metadatos de una versión del catálogo. Solo Coordinación AMPIP.
+      x-acceptance-criteria: [RF-01-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Versión del catálogo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionCatalogo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /catalogo/exportar:
+    get:
+      tags: [Catálogo]
+      operationId: exportarCatalogoMaestro
+      summary: Descargar el archivo maestro del catálogo
+      description: |
+        Genera el archivo maestro con los 286 criterios y sus cuatro columnas O/R/NA.
+        Restringido a Coordinación AMPIP; APPI y consultores reciben 403 con el mensaje
+        "La descarga del archivo maestro del catálogo está restringida a Coordinación AMPIP".
+      x-acceptance-criteria: [RF-25-AC-2, RF-25-AC-3, RF-25-AC-4]
+      parameters:
+        - name: versionId
+          in: query
+          required: false
+          description: Versión a exportar; si se omite, la vigente.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Archivo maestro del catálogo.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /catalogo/criterios/{criterioId}:
+    get:
+      tags: [Catálogo]
+      operationId: obtenerCriterio
+      summary: Consultar un criterio del catálogo
+      description: |
+        Devuelve un criterio individual con su descripción de evidencia suficiente.
+        La APPI y el consultor asignado solo pueden consultar criterios aplicables (O o R) al tipo de PI de sus parques;
+        para otros criterios reciben 403.
+      x-acceptance-criteria: [RF-25-AC-1, RF-24-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/CriterioId'
+      responses:
+        '200':
+          description: Criterio del catálogo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Criterio'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /catalogo/criterios/{criterioId}/evidencia-suficiente:
+    put:
+      tags: [Catálogo]
+      operationId: definirEvidenciaSuficiente
+      summary: Definir la evidencia suficiente de un criterio
+      description: Coordinación AMPIP captura o reemplaza la descripción de la evidencia suficiente de un criterio. Consultores y APPI reciben 403.
+      x-acceptance-criteria: [RF-24-AC-1, RF-24-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/CriterioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenciaSuficienteRequest'
+      responses:
+        '200':
+          description: Descripción guardada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Criterio'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Generaciones
+  /generaciones:
+    get:
+      tags: [Generaciones]
+      operationId: listarGeneraciones
+      summary: Listar generaciones
+      description: Lista las generaciones del programa con su versión de catálogo asociada.
+      x-acceptance-criteria: [RF-28-AC-1]
+      responses:
+        '200':
+          description: Generaciones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Generacion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Generaciones]
+      operationId: crearGeneracion
+      summary: Crear generación
+      description: Coordinación AMPIP crea una generación con nombre, fecha de inicio y versión vigente del catálogo. APPI y consultores reciben 403.
+      x-acceptance-criteria: [RF-28-AC-1, RF-28-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneracionCreate'
+      responses:
+        '201':
+          description: Generación creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generacion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: La versión de catálogo indicada no existe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /generaciones/{generacionId}:
+    get:
+      tags: [Generaciones]
+      operationId: obtenerGeneracion
+      summary: Consultar generación
+      description: Devuelve una generación y el número de parques inscritos.
+      x-acceptance-criteria: [RF-28-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/GeneracionId'
+      responses:
+        '200':
+          description: Generación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generacion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Parques
+  /parques:
+    get:
+      tags: [Parques]
+      operationId: listarParques
+      summary: Listar parques
+      description: |
+        Lista los parques visibles para el usuario según su rol: Coordinación AMPIP ve todos; el consultor asignado,
+        sus parques asignados; la APPI, su parque. Por defecto omite los parques dados de baja.
+      x-acceptance-criteria: [RF-29-AC-3]
+      parameters:
+        - name: generacionId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoParque'
+        - name: incluirHistoricos
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de parques.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaParques'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Parques]
+      operationId: crearParque
+      summary: Dar de alta parque
+      description: |
+        Coordinación AMPIP da de alta un parque con nombre, desarrollador, tipo de PI, región (estado de la República)
+        y generación. El parque se crea en estado "activo" con fecha de alta igual a la fecha de la operación.
+        Rechaza tipo de PI inválido ("Debe seleccionar un tipo de PI válido"), región inválida
+        ("Debe seleccionar una región válida") o falta de generación ("Debe indicar la generación del parque").
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-3, RF-28-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParqueCreate'
+      responses:
+        '201':
+          description: Parque creado en estado "activo".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parque'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: La generación indicada no existe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}:
+    get:
+      tags: [Parques]
+      operationId: obtenerParque
+      summary: Consultar expediente del parque
+      description: |
+        Devuelve los datos del expediente del parque, incluida la versión del catálogo contra la que fue evaluado
+        (solo lectura) y las fechas de término y de actualización anual del programa. Un usuario sin relación con
+        el parque recibe 403 (RNF-01).
+      x-acceptance-criteria: [RF-01-AC-3, RF-30-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Expediente del parque.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Parques]
+      operationId: actualizarParque
+      summary: Actualizar datos generales del parque
+      description: |
+        Coordinación AMPIP actualiza nombre, desarrollador o región. No permite modificar la versión del catálogo
+        ni el tipo de PI (este último se cambia en `/parques/{parqueId}/tipo-pi`).
+      x-acceptance-criteria: [RF-01-AC-3, RF-02-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParqueUpdate'
+      responses:
+        '200':
+          description: Parque actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parque'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Parques]
+      operationId: darDeBajaParque
+      summary: Dar de baja parque
+      description: |
+        Baja lógica: el parque pasa a estado "baja", se retira de inmediato el acceso a todos los usuarios asociados
+        (APPI y consultor asignado) y deja de mostrarse en la vista de avance activa. El historial se conserva.
+        Solo Coordinación AMPIP.
+      x-acceptance-criteria: [RF-29-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Parque dado de baja.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/tipo-pi:
+    put:
+      tags: [Parques]
+      operationId: cambiarTipoPI
+      summary: Cambiar el tipo de PI del parque
+      description: |
+        Coordinación AMPIP cambia el tipo de PI. El sistema cierra el historial anterior (fecha_hasta), abre uno nuevo
+        (fecha_desde), recalcula los criterios O/R/NA, conserva el cumplimiento anterior asociado a la clasificación
+        previa y asigna "pendiente" a los criterios que dejan de ser NA. Un valor fuera de los cuatro válidos se
+        rechaza con 422 "Tipo de PI inválido" sin crear historial.
+      x-acceptance-criteria: [RF-11-AC-1, RF-11-AC-2, RF-11-AC-3, RF-11-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioTipoPIRequest'
+      responses:
+        '200':
+          description: Tipo de PI actualizado y criterios recalculados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CambioTipoPIResultado'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/historial-tipo-pi:
+    get:
+      tags: [Parques]
+      operationId: listarHistorialTipoPI
+      summary: Consultar historial de tipo de PI
+      description: Devuelve los periodos de clasificación del parque con el cumplimiento registrado bajo cada uno.
+      x-acceptance-criteria: [RF-11-AC-1, RF-11-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Historial de tipo de PI.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HistorialTipoPI'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/fechas-programa:
+    put:
+      tags: [Parques]
+      operationId: registrarFechasPrograma
+      summary: Registrar fechas de término y de actualización anual
+      description: Coordinación AMPIP registra la fecha de término del programa y la fecha de la próxima actualización anual del parque.
+      x-acceptance-criteria: [RF-30-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FechasPrograma'
+      responses:
+        '200':
+          description: Fechas guardadas en el expediente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FechasPrograma'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/actualizaciones-anuales:
+    post:
+      tags: [Parques]
+      operationId: registrarActualizacionAnual
+      summary: Registrar actualización anual del programa
+      description: |
+        Coordinación AMPIP registra la actualización anual del parque. El sistema calcula la siguiente fecha de
+        actualización un año después de la registrada y retira la marca de atraso si existía.
+      x-acceptance-criteria: [RF-30-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualizacionAnualCreate'
+      responses:
+        '201':
+          description: Actualización registrada; devuelve las fechas recalculadas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FechasPrograma'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/historial:
+    get:
+      tags: [Parques]
+      operationId: obtenerHistorialParque
+      summary: Consultar historial del parque en el programa
+      description: |
+        Devuelve en una sola respuesta las generaciones cursadas, fechas de término y actualización, autoevaluaciones,
+        Opiniones de Cumplimiento y dictámenes registrados del parque. Una APPI que consulta un parque que no es el
+        suyo recibe 403.
+      x-acceptance-criteria: [RF-31-AC-1, RF-31-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Historial del parque.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialParque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques-historicos:
+    post:
+      tags: [Parques]
+      operationId: crearParqueHistorico
+      summary: Dar de alta un parque histórico
+      description: |
+        Coordinación AMPIP da de alta un parque histórico con datos mínimos (nombre, región, fecha del último dictamen
+        y fecha de término), sin exigir documentos ni evidencias ni migrar su expediente.
+      x-acceptance-criteria: [RF-31-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParqueHistoricoCreate'
+      responses:
+        '201':
+          description: Parque histórico creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parque'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Usuarios
+  /usuarios:
+    get:
+      tags: [Usuarios]
+      operationId: listarUsuarios
+      summary: Listar usuarios
+      description: Lista usuarios con sus roles. Solo Coordinación AMPIP.
+      x-acceptance-criteria: [RF-03-AC-1]
+      parameters:
+        - name: rol
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Rol'
+        - name: parqueId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de usuarios.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaUsuarios'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Usuarios]
+      operationId: crearUsuario
+      summary: Dar de alta usuario
+      description: |
+        Coordinación AMPIP da de alta un usuario con uno o más roles. La cuenta se crea en estado
+        "pendiente de activación" y se envía una invitación por correo. No se permite que un usuario sea APPI y
+        Consultor asignado del mismo parque. La cuenta de Administrador técnico se crea sin acceso a parques ni evidencias.
+      x-acceptance-criteria: [RF-03-AC-1, RF-03-AC-2, RF-03-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioCreate'
+      responses:
+        '201':
+          description: Usuario creado en estado "pendiente de activación".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: 'Regla de negocio violada, por ejemplo "Un usuario no puede ser APPI y Consultor del mismo parque".'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /usuarios/{usuarioId}:
+    get:
+      tags: [Usuarios]
+      operationId: obtenerUsuario
+      summary: Consultar usuario
+      description: Devuelve un usuario con sus roles y parques asociados.
+      x-acceptance-criteria: [RF-03-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+      responses:
+        '200':
+          description: Usuario.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Usuarios]
+      operationId: darDeBajaUsuario
+      summary: Dar de baja usuario
+      description: |
+        Desactiva la cuenta (baja lógica) y retira de inmediato su acceso a todos los parques que tenía asignados,
+        invalidando sus sesiones activas. Solo Coordinación AMPIP; una APPI recibe 403 aunque sea su propia cuenta.
+      x-acceptance-criteria: [RF-29-AC-1, RF-29-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+      responses:
+        '200':
+          description: Usuario desactivado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /usuarios/{usuarioId}/roles:
+    put:
+      tags: [Usuarios]
+      operationId: asignarRolesUsuario
+      summary: Reemplazar los roles de un usuario
+      description: Coordinación AMPIP reemplaza la lista de roles del usuario. Aplica la misma regla de incompatibilidad APPI/Consultor del mismo parque.
+      x-acceptance-criteria: [RF-03-AC-2, RF-03-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roles]
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/AsignacionRol'
+      responses:
+        '200':
+          description: Roles actualizados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Asignaciones
+  /parques/{parqueId}/consultor:
+    put:
+      tags: [Asignaciones]
+      operationId: asignarConsultor
+      summary: Asignar o reasignar consultor al parque
+      description: |
+        Coordinación AMPIP asigna un consultor al parque en la generación indicada. Si ya había uno, la asignación
+        anterior se cierra con fecha_hasta, se conserva en el historial y el consultor anterior pierde el acceso al
+        expediente a partir de ese momento. Una APPI recibe 403.
+      x-acceptance-criteria: [RF-10-AC-1, RF-10-AC-2, RF-10-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsignacionConsultorRequest'
+      responses:
+        '200':
+          description: Asignación registrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsignacionConsultor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/asignaciones:
+    get:
+      tags: [Asignaciones]
+      operationId: listarAsignacionesConsultor
+      summary: Consultar historial de asignaciones de consultor
+      description: Devuelve todas las asignaciones consultor-parque-generación, vigentes y cerradas.
+      x-acceptance-criteria: [RF-10-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Historial de asignaciones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AsignacionConsultor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Autoevaluación
+  /parques/{parqueId}/autoevaluacion/criterios:
+    get:
+      tags: [Autoevaluación]
+      operationId: listarCriteriosAutoevaluacion
+      summary: Listar criterios aplicables para la autoevaluación
+      description: |
+        Devuelve únicamente los criterios O o R del tipo de PI del parque (omite los NA). Disponible para la APPI
+        del parque y su consultor asignado; es la vía para que vean los criterios aplicables sin descargar el
+        archivo maestro.
+      x-acceptance-criteria: [RF-04-AC-1, RF-25-AC-1, RF-25-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - name: estandar
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+      responses:
+        '200':
+          description: Criterios aplicables.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CriterioAplicable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /autoevaluaciones:
+    post:
+      tags: [Autoevaluación]
+      operationId: registrarAutoevaluacion
+      summary: Registrar respuesta de autoevaluación de un criterio
+      description: |
+        La APPI registra su respuesta de diagnóstico para un criterio. Si el criterio es NA para el tipo de PI del
+        parque, responde 422 "Este criterio no aplica al tipo de PI del parque" y no crea el registro.
+      x-acceptance-criteria: [RF-04-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoevaluacionCreate'
+      responses:
+        '201':
+          description: Respuesta registrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Autoevaluacion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/autoevaluaciones:
+    get:
+      tags: [Autoevaluación]
+      operationId: listarAutoevaluaciones
+      summary: Consultar autoevaluación del parque
+      description: Devuelve las respuestas de autoevaluación registradas para el parque en la generación en curso.
+      x-acceptance-criteria: [RF-04-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Respuestas de autoevaluación.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Autoevaluacion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Criterios del parque
+  /parques/{parqueId}/criterios:
+    get:
+      tags: [Criterios del parque]
+      operationId: listarEstadoCriteriosParque
+      summary: Consultar estado de calificación de los criterios del parque
+      description: |
+        Devuelve, por criterio aplicable, su estado de calificación (pendiente, en revisión, cumplido o no cumplido),
+        la fecha del último cambio, quién lo registró y si está atrasado. Para Coordinación AMPIP la respuesta no
+        incluye enlaces al contenido de evidencias de seguridad.
+      x-acceptance-criteria: [RF-07-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoCalificacion'
+        - name: estandar
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+      responses:
+        '200':
+          description: Estado de los criterios del parque.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CriterioParque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/criterios/{criterioId}/calificacion:
+    patch:
+      tags: [Criterios del parque]
+      operationId: calificarCriterio
+      summary: Calificar criterio como cumplido o no cumplido
+      description: |
+        El consultor asignado califica el criterio. "cumplido" exige al menos una evidencia "aceptada" y, para los
+        estándares 2, 3 y 7, un registro vigente de revisión del análisis de riesgos del ciclo actual; si falta,
+        responde 422 "No se puede calificar este criterio sin un análisis de riesgos vigente" y el criterio conserva
+        su estado. Cualquier otro rol recibe 403.
+      x-acceptance-criteria: [RF-27-AC-2, RF-27-AC-3, RF-27-AC-5, RF-27-AC-6, RF-17-AC-1, RF-17-AC-2, RF-16-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/CriterioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalificacionRequest'
+      responses:
+        '200':
+          description: Criterio calificado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CriterioParque'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/criterios/{criterioId}/reapertura:
+    post:
+      tags: [Criterios del parque]
+      operationId: reabrirCriterio
+      summary: Reabrir criterio calificado
+      description: |
+        El consultor asignado reabre un criterio "cumplido" o "no cumplido" registrando un motivo; el criterio vuelve
+        a "en revisión" sin necesidad de evidencia nueva. La APPI recibe 403.
+      x-acceptance-criteria: [RF-27-AC-8, RF-27-AC-5]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/CriterioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReaperturaRequest'
+      responses:
+        '200':
+          description: Criterio reabierto en "en revisión".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CriterioParque'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: El criterio no está en "cumplido" ni en "no cumplido".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Evidencias
+  /parques/{parqueId}/criterios/{criterioId}/evidencias:
+    get:
+      tags: [Evidencias]
+      operationId: listarEvidenciasCriterio
+      summary: Listar evidencias de un criterio
+      description: Devuelve los metadatos de las evidencias de un criterio con su estado (enviada, observada, aceptada). No incluye el contenido.
+      x-acceptance-criteria: [RF-05-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/CriterioId'
+      responses:
+        '200':
+          description: Evidencias del criterio.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Evidencia'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Evidencias]
+      operationId: subirEvidencia
+      summary: Subir evidencia de un criterio
+      description: |
+        La APPI sube un archivo como evidencia del criterio en una fase. La evidencia queda "enviada" con fecha, autor
+        y criterio. Si el criterio estaba "pendiente", "cumplido" o "no cumplido", pasa automáticamente a "en revisión".
+        La carga no depende del análisis de riesgos para ningún estándar.
+
+        Validaciones de archivo (RF-06): tamaño máximo 100 MB inclusive (104857600 bytes); formatos permitidos PDF, JPG,
+        PNG, HEIC, XLSX y DOCX. Un video responde 422 con "Este sistema no acepta archivos de video; suba una fotografía
+        o captura de pantalla con fecha visible"; otro formato no permitido, "Formato de archivo no permitido; use PDF,
+        JPG, PNG, HEIC, XLSX o DOCX". Gerente corporativo, Coordinación AMPIP y consultores reciben 403.
+      x-acceptance-criteria: [RF-05-AC-1, RF-06-AC-1, RF-06-AC-2, RF-06-AC-3, RF-06-AC-4, RF-06-AC-5, RF-27-AC-4, RF-27-AC-7, RF-17-AC-3, RF-23-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/CriterioId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EvidenciaUpload'
+      responses:
+        '201':
+          description: Evidencia creada en estado "enviada".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evidencia'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: 'El archivo supera el límite de 100 MB ("El archivo supera el límite de 100 MB").'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/evidencias:
+    get:
+      tags: [Evidencias]
+      operationId: listarEvidenciasParque
+      summary: Listar evidencias del expediente
+      description: Lista paginada de metadatos de evidencias del parque (hasta 1,500 registros por expediente, RNF-06).
+      x-acceptance-criteria: [RF-05-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoEvidencia'
+        - name: fase
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Fase'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de evidencias.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaEvidencias'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evidencias/{evidenciaId}:
+    get:
+      tags: [Evidencias]
+      operationId: obtenerEvidencia
+      summary: Consultar metadatos de una evidencia
+      description: Devuelve metadatos, estado, versiones y observaciones de la evidencia.
+      x-acceptance-criteria: [RF-05-AC-2, RF-05-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/EvidenciaId'
+      responses:
+        '200':
+          description: Evidencia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenciaDetalle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evidencias/{evidenciaId}/contenido:
+    get:
+      tags: [Evidencias]
+      operationId: descargarContenidoEvidencia
+      summary: Descargar el contenido de una evidencia
+      description: |
+        Devuelve el archivo. Coordinación AMPIP solo puede abrir evidencias administrativas (por ejemplo, la carta de
+        inscripción); las evidencias de seguridad (plan de contingencia, ubicación de cámaras, estándar 7) responden 403
+        para Coordinación AMPIP y para el Administrador técnico. Cada descarga se registra en bitácora.
+      x-acceptance-criteria: [RF-07-AC-2, RF-07-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/EvidenciaId'
+        - name: version
+          in: query
+          required: false
+          description: Número de versión; si se omite, la más reciente.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Contenido del archivo.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evidencias/{evidenciaId}/versiones:
+    post:
+      tags: [Evidencias]
+      operationId: subirVersionEvidencia
+      summary: Subir nueva versión de una evidencia observada
+      description: |
+        La APPI sube una versión nueva de una evidencia "observada"; la evidencia vuelve a "enviada". Aplican las mismas
+        validaciones de tamaño y formato que en la carga inicial.
+      x-acceptance-criteria: [RF-05-AC-4, RF-06-AC-1, RF-06-AC-4, RF-06-AC-5]
+      parameters:
+        - $ref: '#/components/parameters/EvidenciaId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VersionEvidenciaUpload'
+      responses:
+        '201':
+          description: Nueva versión registrada; evidencia en "enviada".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenciaDetalle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: El archivo supera el límite de 100 MB.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evidencias/{evidenciaId}/observaciones:
+    post:
+      tags: [Evidencias]
+      operationId: registrarObservacion
+      summary: Registrar observación sobre una evidencia
+      description: |
+        El consultor asignado marca una evidencia "enviada" como "observada" con un motivo y el sistema notifica a la
+        APPI por correo. El criterio permanece en "en revisión". Un consultor sin el parque asignado o un gerente
+        corporativo reciben 403.
+      x-acceptance-criteria: [RF-05-AC-2, RF-05-AC-3, RF-23-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/EvidenciaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservacionCreate'
+      responses:
+        '201':
+          description: Observación registrada; evidencia en "observada".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observacion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: La evidencia no está en estado "enviada".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evidencias/{evidenciaId}/aceptacion:
+    post:
+      tags: [Evidencias]
+      operationId: aceptarEvidencia
+      summary: Marcar evidencia como aceptada
+      description: El consultor asignado marca una evidencia "enviada" como "aceptada". La APPI y cualquier otro rol reciben 403.
+      x-acceptance-criteria: [RF-27-AC-1, RF-27-AC-5]
+      parameters:
+        - $ref: '#/components/parameters/EvidenciaId'
+      responses:
+        '200':
+          description: Evidencia aceptada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evidencia'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: La evidencia no está en estado "enviada".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Cumplimiento
+  /parques/{parqueId}/cumplimiento:
+    get:
+      tags: [Cumplimiento]
+      operationId: obtenerCumplimientoParque
+      summary: Calcular cumplimiento del parque
+      description: |
+        Devuelve, por parque y por estándar, el cumplimiento de obligatorios (O cumplidos ÷ O aplicables × 100, sin NA)
+        y el avance general ((O+R cumplidos) ÷ (O+R aplicables) × 100). Un estándar sin O aplicables reporta
+        `noAplica: true` y `porcentajeObligatorios: null`. Los criterios "no cumplido" cuentan como no cumplidos.
+      x-acceptance-criteria: [RF-08-AC-1, RF-08-AC-2, RF-08-AC-3, RF-27-AC-2, RF-27-AC-6]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Cifras de cumplimiento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cumplimiento'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Plan de trabajo
+  /parques/{parqueId}/plan-trabajo:
+    get:
+      tags: [Plan de trabajo]
+      operationId: listarPlanTrabajo
+      summary: Consultar plan de trabajo del parque
+      description: Devuelve los registros del plan de trabajo con responsable, fecha comprometida y marca de atraso.
+      x-acceptance-criteria: [RF-09-AC-1, RF-09-AC-2, RF-09-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Plan de trabajo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanTrabajoItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Plan de trabajo]
+      operationId: crearPlanTrabajoItem
+      summary: Registrar criterio en el plan de trabajo
+      description: |
+        El consultor asignado registra, para un criterio pendiente, un responsable y una fecha comprometida. El
+        responsable debe ser un usuario con rol APPI del mismo parque; si no, responde 422
+        "El responsable debe ser un usuario APPI de este parque".
+      x-acceptance-criteria: [RF-09-AC-1, RF-09-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanTrabajoItemCreate'
+      responses:
+        '201':
+          description: Registro de plan creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanTrabajoItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/plan-trabajo/{planItemId}:
+    put:
+      tags: [Plan de trabajo]
+      operationId: actualizarPlanTrabajoItem
+      summary: Actualizar responsable o fecha comprometida
+      description: El consultor asignado reemplaza responsable o fecha comprometida. Aplica la misma validación de responsable APPI del parque.
+      x-acceptance-criteria: [RF-09-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/PlanItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanTrabajoItemCreate'
+      responses:
+        '200':
+          description: Registro actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanTrabajoItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Plan de trabajo]
+      operationId: eliminarPlanTrabajoItem
+      summary: Eliminar registro del plan de trabajo
+      description: El consultor asignado elimina un registro del plan de trabajo.
+      x-acceptance-criteria: []
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - $ref: '#/components/parameters/PlanItemId'
+      responses:
+        '204':
+          description: Registro eliminado.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/atrasos:
+    get:
+      tags: [Plan de trabajo]
+      operationId: listarAtrasosParque
+      summary: Consultar listado de atrasos del parque
+      description: |
+        Devuelve los criterios marcados como "atrasado" por la revisión diaria de plazos (fecha comprometida vencida
+        sin estado "cumplido", corte a las 00:00 de Ciudad de México). Un criterio con fecha aún no vencida no aparece,
+        aunque siga "pendiente" o "en revisión".
+      x-acceptance-criteria: [RF-09-AC-2, RF-09-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Criterios atrasados.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanTrabajoItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Análisis de riesgos
+  /parques/{parqueId}/analisis-riesgos/revisiones:
+    get:
+      tags: [Análisis de riesgos]
+      operationId: listarRevisionesAnalisisRiesgos
+      summary: Consultar revisiones del análisis de riesgos
+      description: Devuelve los registros de revisión con su marca de vigencia. Visible solo para la APPI del parque y su consultor asignado.
+      x-acceptance-criteria: [RF-16-AC-1, RF-16-AC-4]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Revisiones del análisis de riesgos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RevisionAnalisisRiesgos'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Análisis de riesgos]
+      operationId: registrarRevisionAnalisisRiesgos
+      summary: Registrar revisión del análisis de riesgos
+      description: |
+        El consultor asignado registra la revisión (fecha, versión, firmante y resumen) sin almacenar el documento.
+        El registro queda vigente para el ciclo actual y reemplaza la vigencia del anterior del mismo ciclo.
+      x-acceptance-criteria: [RF-16-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevisionAnalisisRiesgosCreate'
+      responses:
+        '201':
+          description: Revisión registrada y vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevisionAnalisisRiesgos'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/analisis-riesgos/documento:
+    put:
+      tags: [Análisis de riesgos]
+      operationId: subirDocumentoAnalisisRiesgos
+      summary: Subir documento completo del análisis de riesgos
+      description: La APPI decide subir el documento completo; queda visible únicamente para la APPI y su consultor asignado.
+      x-acceptance-criteria: [RF-16-AC-2]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Documento guardado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoAnalisisRiesgos'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Análisis de riesgos]
+      operationId: descargarDocumentoAnalisisRiesgos
+      summary: Descargar documento del análisis de riesgos
+      description: |
+        Solo la APPI del parque y su consultor asignado. Coordinación AMPIP, Administrador técnico y consultor de comité
+        reciben 403 y el intento se registra en la bitácora.
+      x-acceptance-criteria: [RF-16-AC-2, RF-16-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Documento.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Análisis de riesgos]
+      operationId: eliminarDocumentoAnalisisRiesgos
+      summary: Eliminar documento del análisis de riesgos
+      description: La APPI elimina el documento subido. El registro de revisión se conserva.
+      x-acceptance-criteria: []
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '204':
+          description: Documento eliminado.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Opiniones de Cumplimiento
+  /parques/{parqueId}/opiniones:
+    get:
+      tags: [Opiniones de Cumplimiento]
+      operationId: listarOpiniones
+      summary: Consultar Opiniones de Cumplimiento del parque
+      description: Devuelve las Opiniones intermedia y final del parque, con su marca favorable o no favorable en la final.
+      x-acceptance-criteria: [RF-12-AC-6]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+        - name: generacionId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Opiniones de Cumplimiento.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OpinionCumplimiento'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Opiniones de Cumplimiento]
+      operationId: emitirOpinion
+      summary: Emitir Opinión de Cumplimiento
+      description: |
+        El consultor asignado emite la Opinión intermedia o final. Precondiciones para ambas: criterio 1.2 calificado
+        "cumplido" ("No se puede emitir la Opinión sin la política de seguridad firmada") y un registro vigente de
+        revisión del análisis de riesgos ("No se puede emitir la Opinión sin un análisis de riesgos vigente").
+        La intermedia no exige mínimo de cumplimiento; guarda los porcentajes vigentes y cambia la fase del parque a
+        "Opinión intermedia emitida". La final exige `favorable` ("Indica si la Opinión final es favorable o no
+        favorable") y solo puede existir una por parque y generación ("Ya existe una Opinión final para este parque en
+        esta generación", 409). Un consultor sin el parque asignado recibe 403.
+      x-acceptance-criteria: [RF-12-AC-1, RF-12-AC-2, RF-12-AC-3, RF-12-AC-4, RF-12-AC-5, RF-12-AC-6]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpinionCreate'
+      responses:
+        '201':
+          description: Opinión registrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpinionCumplimiento'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Ya existe una Opinión final para este parque en esta generación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Comité
+  /parques/{parqueId}/sesiones-comite:
+    post:
+      tags: [Comité]
+      operationId: abrirSesionComite
+      summary: Abrir sesión de comité y asignar consultor de comité
+      description: |
+        Coordinación AMPIP abre la sesión de comité del parque y asigna al consultor de comité. Antes de abrirla, el
+        sistema valida el expediente (RF-15): sin la autoevaluación revisada responde 422 "No se puede abrir la sesión
+        de comité: la autoevaluación no está revisada"; sin Opinión final favorable, 422 "No se puede abrir la sesión
+        de comité sin la Opinión de Cumplimiento final favorable del consultor". Si el consultor propuesto es el
+        consultor asignado del parque, 422 "El consultor asignado a este parque no puede ser su consultor de comité".
+        Si todo pasa, otorga acceso temporal de solo lectura al expediente, sin el análisis de riesgos.
+      x-acceptance-criteria: [RF-13-AC-1, RF-13-AC-2, RF-15-AC-1, RF-15-AC-2, RF-15-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SesionComiteCreate'
+      responses:
+        '201':
+          description: Sesión abierta y acceso temporal otorgado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionComite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Comité]
+      operationId: listarSesionesComite
+      summary: Listar sesiones de comité del parque
+      description: Devuelve las sesiones de comité del parque con su estado (abierta o cerrada).
+      x-acceptance-criteria: [RF-13-AC-1]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Sesiones de comité.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SesionComite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /parques/{parqueId}/validacion-comite:
+    get:
+      tags: [Comité]
+      operationId: validarExpedienteComite
+      summary: Prevalidar expediente para comité
+      description: Devuelve si el expediente cumple las condiciones para abrir la sesión de comité y, si no, cuáles faltan. No abre la sesión.
+      x-acceptance-criteria: [RF-15-AC-1, RF-15-AC-2, RF-15-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Resultado de la validación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidacionExpediente'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sesiones-comite/{sesionId}:
+    patch:
+      tags: [Comité]
+      operationId: cerrarSesionComite
+      summary: Cerrar sesión de comité
+      description: Coordinación AMPIP cierra la sesión; a partir de la fecha de cierre el consultor de comité pierde el acceso al expediente.
+      x-acceptance-criteria: [RF-13-AC-3]
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [estado]
+              properties:
+                estado:
+                  type: string
+                  enum: [cerrada]
+      responses:
+        '200':
+          description: Sesión cerrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SesionComite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sesiones-comite/{sesionId}/expediente:
+    get:
+      tags: [Comité]
+      operationId: consultarExpedienteComite
+      summary: Consultar expediente en sesión de comité
+      description: |
+        Acceso de solo lectura al expediente para los miembros del comité mientras la sesión está abierta. Excluye el
+        registro y el documento del análisis de riesgos. Tras el cierre de la sesión, el consultor de comité recibe 403.
+      x-acceptance-criteria: [RF-13-AC-1, RF-13-AC-3, RF-12-AC-6]
+      parameters:
+        - $ref: '#/components/parameters/SesionId'
+      responses:
+        '200':
+          description: Expediente para comité.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpedienteComite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Dictámenes
+  /parques/{parqueId}/dictamenes:
+    get:
+      tags: [Dictámenes]
+      operationId: listarDictamenes
+      summary: Consultar dictámenes del parque
+      description: Devuelve los dictámenes del parque en estado "borrador" o "firmado", visibles para los tres miembros del comité y Coordinación AMPIP.
+      x-acceptance-criteria: [RF-14-AC-6]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      responses:
+        '200':
+          description: Dictámenes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dictamen'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Dictámenes]
+      operationId: capturarDictamen
+      summary: Capturar dictamen en borrador
+      description: |
+        Coordinación AMPIP o el consultor de comité capturan el dictamen (otorgar o no otorgar) con su motivo; queda en
+        estado "borrador". "otorgar" se valida una sola vez aquí y exige: autoevaluación revisada ("No se puede otorgar
+        sin la autoevaluación revisada: hay criterios pendientes o en revisión"), Opinión final favorable ("No se puede
+        otorgar sin la Opinión de Cumplimiento final favorable del consultor") y 100 % de obligatorios ("No se puede
+        otorgar sin el 100 % de los obligatorios cumplidos"). "no_otorgar" no exige ninguna condición. Un consultor
+        asignado recibe 403.
+      x-acceptance-criteria: [RF-14-AC-2, RF-14-AC-3, RF-14-AC-4, RF-14-AC-5, RF-14-AC-6, RF-14-AC-8]
+      parameters:
+        - $ref: '#/components/parameters/ParqueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DictamenCreate'
+      responses:
+        '201':
+          description: Dictamen capturado en "borrador".
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dictamen'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /dictamenes/{dictamenId}/firma:
+    post:
+      tags: [Dictámenes]
+      operationId: firmarDictamen
+      summary: Firmar dictamen
+      description: |
+        Solo el Director General AMPIP pasa un dictamen "borrador" a "firmado"; la firma no repite la validación de
+        captura. Registra fecha y firmante y, si es "otorgar", inicia la vigencia del distintivo. Cualquier otro
+        usuario recibe 403.
+      x-acceptance-criteria: [RF-14-AC-1, RF-14-AC-7]
+      parameters:
+        - $ref: '#/components/parameters/DictamenId'
+      responses:
+        '200':
+          description: Dictamen firmado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dictamen'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: El dictamen ya está firmado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ---------------------------------------------------------------- Reportes
+  /reportes/avance:
+    get:
+      tags: [Reportes]
+      operationId: obtenerVistaAvance
+      summary: Vista de avance de parques para AMPIP
+      description: |
+        Cartera de parques activos con fase, cifras de cumplimiento, número de criterios atrasados y marca de atraso
+        por falta de actualización anual del programa (fecha de actualización vencida sin actualización registrada).
+        Excluye parques dados de baja. Solo Coordinación AMPIP y Director General.
+      x-acceptance-criteria: [RF-07-AC-1, RF-30-AC-2, RF-30-AC-3, RF-29-AC-3]
+      parameters:
+        - name: generacionId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Vista de avance.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AvanceParque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reportes/mensual-direccion:
+    get:
+      tags: [Reportes]
+      operationId: generarReporteMensualDireccion
+      summary: Generar reporte mensual para Dirección
+      description: |
+        Reporte por generación y mes con nombre de cada parque, fase, si está atrasado y número de observaciones
+        abiertas. Solo Coordinación AMPIP; una APPI recibe 403.
+      x-acceptance-criteria: [RF-21-AC-1, RF-21-AC-2]
+      parameters:
+        - name: generacionId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: mes
+          in: query
+          required: true
+          description: Mes del reporte en formato AAAA-MM.
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+            example: '2027-05'
+      responses:
+        '200':
+          description: Reporte mensual.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReporteMensual'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reportes/portafolio-corporativo:
+    get:
+      tags: [Reportes]
+      operationId: obtenerPortafolioCorporativo
+      summary: Vista consolidada del gerente corporativo
+      description: Avance de solo lectura de todos los parques del desarrollador del gerente corporativo autenticado.
+      x-acceptance-criteria: [RF-23-AC-1]
+      responses:
+        '200':
+          description: Avance de los parques del desarrollador.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AvanceParque'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT emitido por `POST /auth/login`. Expira tras 60 minutos de inactividad y se invalida al cerrar sesión.
+
+  parameters:
+    ParqueId:
+      name: parqueId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CriterioId:
+      name: criterioId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EvidenciaId:
+      name: evidenciaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UsuarioId:
+      name: usuarioId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GeneracionId:
+      name: generacionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlanItemId:
+      name: planItemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SesionId:
+      name: sesionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DictamenId:
+      name: dictamenId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Pagina:
+      name: pagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    TamanoPagina:
+      name: tamanoPagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  responses:
+    BadRequest:
+      description: Solicitud mal formada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Sin token, token inválido, sesión cerrada o expirada por inactividad.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: El rol o la relación del usuario con el recurso no permite la operación.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Validación de datos o regla de negocio no satisfecha; `mensaje` lleva el texto del SRS.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: Error interno del servidor.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    # ---------------------------------------------------- Enumeraciones
+    Rol:
+      type: string
+      enum:
+        - coordinacion_ampip
+        - director_general_ampip
+        - appi
+        - consultor_asignado
+        - consultor_comite
+        - gerente_corporativo
+        - administrador_tecnico
+    TipoPI:
+      type: string
+      enum: [construccion_abierto, construccion_cerrado, operacion_abierto, operacion_cerrado]
+    Marca:
+      type: string
+      enum: [O, R, NA]
+    Region:
+      type: string
+      description: Estado de la República (lista cerrada).
+      enum:
+        - Aguascalientes
+        - Baja California
+        - Baja California Sur
+        - Campeche
+        - Chiapas
+        - Chihuahua
+        - Ciudad de México
+        - Coahuila
+        - Colima
+        - Durango
+        - Estado de México
+        - Guanajuato
+        - Guerrero
+        - Hidalgo
+        - Jalisco
+        - Michoacán
+        - Morelos
+        - Nayarit
+        - Nuevo León
+        - Oaxaca
+        - Puebla
+        - Querétaro
+        - Quintana Roo
+        - San Luis Potosí
+        - Sinaloa
+        - Sonora
+        - Tabasco
+        - Tamaulipas
+        - Tlaxcala
+        - Veracruz
+        - Yucatán
+        - Zacatecas
+    EstadoParque:
+      type: string
+      enum: [activo, baja, historico]
+    EstadoUsuario:
+      type: string
+      enum: [pendiente_activacion, activo, inactivo]
+    EstadoEvidencia:
+      type: string
+      enum: [enviada, observada, aceptada]
+    EstadoCalificacion:
+      type: string
+      enum: [pendiente, en_revision, cumplido, no_cumplido]
+    CategoriaEvidencia:
+      type: string
+      enum: [administrativa, seguridad]
+    Fase:
+      type: string
+      enum:
+        - diagnostico
+        - plan_trabajo
+        - politica_seguridad
+        - analisis_riesgos
+        - implementacion_estandares
+        - opinion_intermedia_emitida
+        - opinion_final_emitida
+        - evaluacion_desempeno
+        - dictamen
+
+    # ---------------------------------------------------- Comunes
+    Error:
+      type: object
+      required: [codigo, mensaje]
+      properties:
+        codigo:
+          type: string
+          example: TIPO_PI_INVALIDO
+        mensaje:
+          type: string
+          example: Debe seleccionar un tipo de PI válido
+        detalles:
+          type: array
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              fila:
+                type: integer
+              columna:
+                type: string
+              mensaje:
+                type: string
+    Mensaje:
+      type: object
+      properties:
+        mensaje:
+          type: string
+    Paginacion:
+      type: object
+      properties:
+        pagina:
+          type: integer
+        tamanoPagina:
+          type: integer
+        total:
+          type: integer
+
+    # ---------------------------------------------------- Autenticación
+    LoginRequest:
+      type: object
+      required: [correo, contrasena]
+      properties:
+        correo:
+          type: string
+          format: email
+        contrasena:
+          type: string
+          format: password
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, expiraPorInactividadMin]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          example: bearer
+        expiraPorInactividadMin:
+          type: integer
+          example: 60
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+    RecuperacionRequest:
+      type: object
+      required: [correo]
+      properties:
+        correo:
+          type: string
+          format: email
+    RestablecerContrasenaRequest:
+      type: object
+      required: [token, nuevaContrasena]
+      properties:
+        token:
+          type: string
+        nuevaContrasena:
+          type: string
+          format: password
+          minLength: 10
+
+    # ---------------------------------------------------- Catálogo
+    CargaCatalogoRequest:
+      type: object
+      required: [archivo, nombreVersion]
+      properties:
+        archivo:
+          type: string
+          format: binary
+          description: CSV con las ocho columnas del catálogo.
+        nombreVersion:
+          type: string
+          example: catalogo-2023-v1
+    VersionCatalogo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        nombre:
+          type: string
+          example: catalogo-2023-v1
+        vigente:
+          type: boolean
+        totalCriterios:
+          type: integer
+          example: 286
+        fechaCarga:
+          type: string
+          format: date-time
+        cargadoPor:
+          type: string
+          format: uuid
+    MarcasPorTipo:
+      type: object
+      properties:
+        construccion_abierto:
+          $ref: '#/components/schemas/Marca'
+        construccion_cerrado:
+          $ref: '#/components/schemas/Marca'
+        operacion_abierto:
+          $ref: '#/components/schemas/Marca'
+        operacion_cerrado:
+          $ref: '#/components/schemas/Marca'
+    Criterio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        versionCatalogoId:
+          type: string
+          format: uuid
+        estandar:
+          type: integer
+          minimum: 1
+          maximum: 10
+        subestandar:
+          type: string
+          example: '2.8'
+        clave:
+          type: string
+          example: '2.8.1'
+        texto:
+          type: string
+        metodoVerificacion:
+          type: string
+        categoriaEvidencia:
+          $ref: '#/components/schemas/CategoriaEvidencia'
+        evidenciaSuficiente:
+          type: string
+          nullable: true
+        marcas:
+          $ref: '#/components/schemas/MarcasPorTipo'
+    CriterioAplicable:
+      type: object
+      description: Criterio filtrado para un parque; solo O o R, sin las marcas de otros tipos de PI.
+      properties:
+        id:
+          type: string
+          format: uuid
+        estandar:
+          type: integer
+        subestandar:
+          type: string
+        clave:
+          type: string
+        texto:
+          type: string
+        metodoVerificacion:
+          type: string
+        evidenciaSuficiente:
+          type: string
+          nullable: true
+        marca:
+          type: string
+          enum: [O, R]
+    EvidenciaSuficienteRequest:
+      type: object
+      required: [texto]
+      properties:
+        texto:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    # ---------------------------------------------------- Generaciones
+    GeneracionCreate:
+      type: object
+      required: [nombre, fechaInicio, versionCatalogoId]
+      properties:
+        nombre:
+          type: string
+          example: '2027'
+        fechaInicio:
+          type: string
+          format: date
+          example: '2027-02-01'
+        versionCatalogoId:
+          type: string
+          format: uuid
+    Generacion:
+      allOf:
+        - $ref: '#/components/schemas/GeneracionCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              readOnly: true
+            versionCatalogoNombre:
+              type: string
+              readOnly: true
+            totalParques:
+              type: integer
+              readOnly: true
+
+    # ---------------------------------------------------- Parques
+    ParqueCreate:
+      type: object
+      required: [nombre, desarrollador, tipoPI, region, generacionId]
+      properties:
+        nombre:
+          type: string
+        desarrollador:
+          type: string
+        tipoPI:
+          $ref: '#/components/schemas/TipoPI'
+        region:
+          $ref: '#/components/schemas/Region'
+        generacionId:
+          type: string
+          format: uuid
+    ParqueUpdate:
+      type: object
+      properties:
+        nombre:
+          type: string
+        desarrollador:
+          type: string
+        region:
+          $ref: '#/components/schemas/Region'
+    ParqueHistoricoCreate:
+      type: object
+      required: [nombre, region, fechaUltimoDictamen, fechaTermino]
+      properties:
+        nombre:
+          type: string
+        region:
+          $ref: '#/components/schemas/Region'
+        fechaUltimoDictamen:
+          type: string
+          format: date
+        fechaTermino:
+          type: string
+          format: date
+    Parque:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        desarrollador:
+          type: string
+          nullable: true
+        tipoPI:
+          allOf:
+            - $ref: '#/components/schemas/TipoPI'
+          nullable: true
+        region:
+          $ref: '#/components/schemas/Region'
+        generacionId:
+          type: string
+          format: uuid
+          nullable: true
+        estado:
+          $ref: '#/components/schemas/EstadoParque'
+        fase:
+          allOf:
+            - $ref: '#/components/schemas/Fase'
+          nullable: true
+        fechaAlta:
+          type: string
+          format: date
+        versionCatalogo:
+          type: string
+          readOnly: true
+          description: Versión del catálogo contra la que se evaluó el parque; solo lectura.
+          example: catalogo-2023-v1
+        consultorAsignadoId:
+          type: string
+          format: uuid
+          nullable: true
+        fechasPrograma:
+          $ref: '#/components/schemas/FechasPrograma'
+        atrasadoActualizacion:
+          type: boolean
+          readOnly: true
+    CambioTipoPIRequest:
+      type: object
+      required: [tipoPI, fechaCambio]
+      properties:
+        tipoPI:
+          $ref: '#/components/schemas/TipoPI'
+        fechaCambio:
+          type: string
+          format: date
+          example: '2027-06-01'
+    CambioTipoPIResultado:
+      type: object
+      properties:
+        parque:
+          $ref: '#/components/schemas/Parque'
+        historialCerrado:
+          $ref: '#/components/schemas/HistorialTipoPI'
+        historialNuevo:
+          $ref: '#/components/schemas/HistorialTipoPI'
+        criteriosQueDejanDeSerNA:
+          type: array
+          description: Criterios que pasan de NA a O o R y entran en estado "pendiente".
+          items:
+            type: string
+            format: uuid
+        criteriosQuePasanANA:
+          type: array
+          items:
+            type: string
+            format: uuid
+    HistorialTipoPI:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipoPI:
+          $ref: '#/components/schemas/TipoPI'
+        fechaDesde:
+          type: string
+          format: date
+        fechaHasta:
+          type: string
+          format: date
+          nullable: true
+        porcentajeObligatoriosAlCierre:
+          type: number
+          format: float
+          nullable: true
+          example: 85.0
+        porcentajeAvanceGeneralAlCierre:
+          type: number
+          format: float
+          nullable: true
+    FechasPrograma:
+      type: object
+      required: [fechaTermino, fechaProximaActualizacion]
+      properties:
+        fechaTermino:
+          type: string
+          format: date
+          example: '2027-11-30'
+        fechaProximaActualizacion:
+          type: string
+          format: date
+          example: '2028-02-01'
+        fechaUltimaActualizacion:
+          type: string
+          format: date
+          nullable: true
+          readOnly: true
+    ActualizacionAnualCreate:
+      type: object
+      required: [fecha]
+      properties:
+        fecha:
+          type: string
+          format: date
+        notas:
+          type: string
+    HistorialParque:
+      type: object
+      properties:
+        parque:
+          $ref: '#/components/schemas/Parque'
+        generaciones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Generacion'
+        fechasPrograma:
+          type: array
+          items:
+            $ref: '#/components/schemas/FechasPrograma'
+        autoevaluaciones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Autoevaluacion'
+        opiniones:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpinionCumplimiento'
+        dictamenes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dictamen'
+    PaginaParques:
+      allOf:
+        - $ref: '#/components/schemas/Paginacion'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Parque'
+
+    # ---------------------------------------------------- Usuarios
+    AsignacionRol:
+      type: object
+      required: [rol]
+      properties:
+        rol:
+          $ref: '#/components/schemas/Rol'
+        parqueId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obligatorio para APPI y consultor asignado; nulo para roles de AMPIP y Administrador técnico.
+        desarrollador:
+          type: string
+          nullable: true
+          description: Obligatorio para gerente corporativo.
+    UsuarioCreate:
+      type: object
+      required: [correo, nombre, roles]
+      properties:
+        correo:
+          type: string
+          format: email
+          example: gerente@parquex.mx
+        nombre:
+          type: string
+        roles:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AsignacionRol'
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        correo:
+          type: string
+          format: email
+        nombre:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoUsuario'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AsignacionRol'
+        fechaAlta:
+          type: string
+          format: date-time
+    PaginaUsuarios:
+      allOf:
+        - $ref: '#/components/schemas/Paginacion'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Usuario'
+
+    # ---------------------------------------------------- Asignaciones
+    AsignacionConsultorRequest:
+      type: object
+      required: [consultorId, generacionId]
+      properties:
+        consultorId:
+          type: string
+          format: uuid
+        generacionId:
+          type: string
+          format: uuid
+    AsignacionConsultor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        consultorId:
+          type: string
+          format: uuid
+        consultorNombre:
+          type: string
+        generacionId:
+          type: string
+          format: uuid
+        fechaDesde:
+          type: string
+          format: date-time
+        fechaHasta:
+          type: string
+          format: date-time
+          nullable: true
+        vigente:
+          type: boolean
+
+    # ---------------------------------------------------- Autoevaluación
+    AutoevaluacionCreate:
+      type: object
+      required: [parqueId, criterioId, respuesta]
+      properties:
+        parqueId:
+          type: string
+          format: uuid
+        criterioId:
+          type: string
+          format: uuid
+        respuesta:
+          type: string
+          enum: [cumple, cumple_parcial, no_cumple]
+        comentario:
+          type: string
+    Autoevaluacion:
+      allOf:
+        - $ref: '#/components/schemas/AutoevaluacionCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            versionCatalogo:
+              type: string
+            registradoPor:
+              type: string
+              format: uuid
+            fecha:
+              type: string
+              format: date-time
+
+    # ---------------------------------------------------- Criterios del parque
+    CriterioParque:
+      type: object
+      properties:
+        criterioId:
+          type: string
+          format: uuid
+        clave:
+          type: string
+        estandar:
+          type: integer
+        texto:
+          type: string
+        marca:
+          type: string
+          enum: [O, R]
+        estadoCalificacion:
+          $ref: '#/components/schemas/EstadoCalificacion'
+        fechaUltimoCambio:
+          type: string
+          format: date-time
+          nullable: true
+        registradoPor:
+          type: string
+          nullable: true
+          description: Nombre del usuario que registró el último cambio.
+        atrasado:
+          type: boolean
+        totalEvidencias:
+          type: integer
+    CalificacionRequest:
+      type: object
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [cumplido, no_cumplido]
+        comentario:
+          type: string
+    ReaperturaRequest:
+      type: object
+      required: [motivo]
+      properties:
+        motivo:
+          type: string
+          minLength: 1
+          example: cambió la configuración de accesos del parque
+
+    # ---------------------------------------------------- Evidencias
+    EvidenciaUpload:
+      type: object
+      required: [archivo, fase]
+      properties:
+        archivo:
+          type: string
+          format: binary
+          description: 'PDF, JPG, PNG, HEIC, XLSX o DOCX; máximo 100 MB inclusive.'
+        fase:
+          $ref: '#/components/schemas/Fase'
+        descripcion:
+          type: string
+    VersionEvidenciaUpload:
+      type: object
+      required: [archivo]
+      properties:
+        archivo:
+          type: string
+          format: binary
+        comentario:
+          type: string
+    Evidencia:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        criterioId:
+          type: string
+          format: uuid
+        fase:
+          $ref: '#/components/schemas/Fase'
+        estado:
+          $ref: '#/components/schemas/EstadoEvidencia'
+        categoria:
+          $ref: '#/components/schemas/CategoriaEvidencia'
+        nombreArchivo:
+          type: string
+        tipoMime:
+          type: string
+          enum:
+            - application/pdf
+            - image/jpeg
+            - image/png
+            - image/heic
+            - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+        tamanoBytes:
+          type: integer
+          maximum: 104857600
+        versionActual:
+          type: integer
+        autorId:
+          type: string
+          format: uuid
+        fechaCarga:
+          type: string
+          format: date-time
+        estadoCriterio:
+          $ref: '#/components/schemas/EstadoCalificacion'
+    EvidenciaDetalle:
+      allOf:
+        - $ref: '#/components/schemas/Evidencia'
+        - type: object
+          properties:
+            versiones:
+              type: array
+              items:
+                type: object
+                properties:
+                  numero:
+                    type: integer
+                  fechaCarga:
+                    type: string
+                    format: date-time
+                  autorId:
+                    type: string
+                    format: uuid
+                  tamanoBytes:
+                    type: integer
+            observaciones:
+              type: array
+              items:
+                $ref: '#/components/schemas/Observacion'
+    ObservacionCreate:
+      type: object
+      required: [motivo]
+      properties:
+        motivo:
+          type: string
+          minLength: 1
+          example: Falta el protocolo de retención del grabador
+    Observacion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        evidenciaId:
+          type: string
+          format: uuid
+        motivo:
+          type: string
+        consultorId:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date-time
+        notificadoAAPPI:
+          type: boolean
+    PaginaEvidencias:
+      allOf:
+        - $ref: '#/components/schemas/Paginacion'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Evidencia'
+
+    # ---------------------------------------------------- Cumplimiento
+    CifrasCumplimiento:
+      type: object
+      properties:
+        obligatoriosAplicables:
+          type: integer
+        obligatoriosCumplidos:
+          type: integer
+        recomendadosAplicables:
+          type: integer
+        recomendadosCumplidos:
+          type: integer
+        porcentajeObligatorios:
+          type: number
+          format: float
+          nullable: true
+          example: 90.0
+        porcentajeAvanceGeneral:
+          type: number
+          format: float
+          nullable: true
+          example: 84.0
+        noAplica:
+          type: boolean
+          description: Verdadero cuando no hay criterios O aplicables; la interfaz muestra "No aplica".
+    Cumplimiento:
+      type: object
+      properties:
+        parqueId:
+          type: string
+          format: uuid
+        tipoPI:
+          $ref: '#/components/schemas/TipoPI'
+        fechaCalculo:
+          type: string
+          format: date-time
+        total:
+          $ref: '#/components/schemas/CifrasCumplimiento'
+        porEstandar:
+          type: array
+          items:
+            allOf:
+              - type: object
+                properties:
+                  estandar:
+                    type: integer
+              - $ref: '#/components/schemas/CifrasCumplimiento'
+
+    # ---------------------------------------------------- Plan de trabajo
+    PlanTrabajoItemCreate:
+      type: object
+      required: [criterioId, responsableId, fechaComprometida]
+      properties:
+        criterioId:
+          type: string
+          format: uuid
+        responsableId:
+          type: string
+          format: uuid
+          description: Usuario con rol APPI del mismo parque.
+        fechaComprometida:
+          type: string
+          format: date
+          example: '2027-04-15'
+    PlanTrabajoItem:
+      allOf:
+        - $ref: '#/components/schemas/PlanTrabajoItemCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            parqueId:
+              type: string
+              format: uuid
+            responsableNombre:
+              type: string
+            estadoCriterio:
+              $ref: '#/components/schemas/EstadoCalificacion'
+            atrasado:
+              type: boolean
+            fechaMarcaAtraso:
+              type: string
+              format: date
+              nullable: true
+
+    # ---------------------------------------------------- Análisis de riesgos
+    RevisionAnalisisRiesgosCreate:
+      type: object
+      required: [fechaRevision, version, firmante, resumen]
+      properties:
+        fechaRevision:
+          type: string
+          format: date
+          example: '2027-03-10'
+        version:
+          type: string
+          example: '1.0'
+        firmante:
+          type: string
+          example: María López, gerente del parque
+        resumen:
+          type: string
+          example: 12 riesgos identificados, 4 altos, con plan de tratamiento
+    RevisionAnalisisRiesgos:
+      allOf:
+        - $ref: '#/components/schemas/RevisionAnalisisRiesgosCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            parqueId:
+              type: string
+              format: uuid
+            ciclo:
+              type: string
+              description: Generación en curso o periodo de renovación al que pertenece.
+            vigente:
+              type: boolean
+            registradoPor:
+              type: string
+              format: uuid
+    DocumentoAnalisisRiesgos:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        nombreArchivo:
+          type: string
+        tamanoBytes:
+          type: integer
+        fechaCarga:
+          type: string
+          format: date-time
+
+    # ---------------------------------------------------- Opiniones
+    OpinionCreate:
+      type: object
+      required: [tipo]
+      properties:
+        tipo:
+          type: string
+          enum: [intermedia, final]
+        favorable:
+          type: boolean
+          nullable: true
+          description: Obligatorio cuando `tipo` es "final"; se ignora en la intermedia.
+        comentarios:
+          type: string
+    OpinionCumplimiento:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        generacionId:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          enum: [intermedia, final]
+        favorable:
+          type: boolean
+          nullable: true
+        porcentajeObligatorios:
+          type: number
+          format: float
+        porcentajeAvanceGeneral:
+          type: number
+          format: float
+        consultorId:
+          type: string
+          format: uuid
+        fecha:
+          type: string
+          format: date-time
+        comentarios:
+          type: string
+
+    # ---------------------------------------------------- Comité
+    SesionComiteCreate:
+      type: object
+      required: [consultorComiteId, fechaInicio, fechaCierre]
+      properties:
+        consultorComiteId:
+          type: string
+          format: uuid
+        fechaInicio:
+          type: string
+          format: date
+        fechaCierre:
+          type: string
+          format: date
+          example: '2027-11-20'
+    SesionComite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        consultorComiteId:
+          type: string
+          format: uuid
+        fechaInicio:
+          type: string
+          format: date
+        fechaCierre:
+          type: string
+          format: date
+        estado:
+          type: string
+          enum: [abierta, cerrada]
+    ValidacionExpediente:
+      type: object
+      properties:
+        apto:
+          type: boolean
+        autoevaluacionRevisada:
+          type: boolean
+        criteriosPendientesOEnRevision:
+          type: integer
+        opinionFinalFavorable:
+          type: boolean
+        motivos:
+          type: array
+          items:
+            type: string
+    ExpedienteComite:
+      type: object
+      description: Expediente de solo lectura para el comité; no incluye el análisis de riesgos.
+      properties:
+        parque:
+          $ref: '#/components/schemas/Parque'
+        cumplimiento:
+          $ref: '#/components/schemas/Cumplimiento'
+        criterios:
+          type: array
+          items:
+            $ref: '#/components/schemas/CriterioParque'
+        opiniones:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpinionCumplimiento'
+        evidencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evidencia'
+
+    # ---------------------------------------------------- Dictámenes
+    DictamenCreate:
+      type: object
+      required: [tipo, motivo]
+      properties:
+        tipo:
+          type: string
+          enum: [otorgar, no_otorgar]
+        motivo:
+          type: string
+          minLength: 1
+    Dictamen:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parqueId:
+          type: string
+          format: uuid
+        generacionId:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          enum: [otorgar, no_otorgar]
+        motivo:
+          type: string
+        estado:
+          type: string
+          enum: [borrador, firmado]
+        capturadoPor:
+          type: string
+          format: uuid
+        fechaCaptura:
+          type: string
+          format: date-time
+        firmadoPor:
+          type: string
+          format: uuid
+          nullable: true
+        fechaFirma:
+          type: string
+          format: date-time
+          nullable: true
+        vigenciaHasta:
+          type: string
+          format: date
+          nullable: true
+          description: Solo para "otorgar" firmado; tres años desde la firma (RD-08, pendiente de confirmar).
+
+    # ---------------------------------------------------- Reportes
+    AvanceParque:
+      type: object
+      properties:
+        parqueId:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        desarrollador:
+          type: string
+        region:
+          $ref: '#/components/schemas/Region'
+        fase:
+          $ref: '#/components/schemas/Fase'
+        porcentajeObligatorios:
+          type: number
+          format: float
+          nullable: true
+        porcentajeAvanceGeneral:
+          type: number
+          format: float
+          nullable: true
+        criteriosAtrasados:
+          type: integer
+        atrasadoActualizacion:
+          type: boolean
+          description: Fecha de actualización anual vencida sin actualización registrada.
+        fechaProximaActualizacion:
+          type: string
+          format: date
+          nullable: true
+    ReporteMensual:
+      type: object
+      properties:
+        generacionId:
+          type: string
+          format: uuid
+        mes:
+          type: string
+          example: '2027-05'
+        fechaGeneracion:
+          type: string
+          format: date-time
+        parques:
+          type: array
+          items:
+            type: object
+            properties:
+              parqueId:
+                type: string
+                format: uuid
+              nombre:
+                type: string
+              fase:
+                $ref: '#/components/schemas/Fase'
+              atrasado:
+                type: boolean
+              observacionesAbiertas:
+                type: integer

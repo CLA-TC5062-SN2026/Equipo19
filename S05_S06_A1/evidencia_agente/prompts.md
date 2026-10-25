@@ -1,6 +1,35 @@
 # Prompts usados con el agente (S05-S06-A1)
 
-Las salidas del agente se guardan sin editar en esta carpeta (`esquema_bd_v0.sql`) y en el historial de git del backend (commit "v0 generado por el agente"). Las correcciones están en `revision_sql.md`.
+Las salidas del agente se guardan sin editar en esta carpeta (`analisis_diferencias_agente.md`, `esquema_bd_v0.sql`) y en el historial de git del backend (commit "v0 generado por el agente"). Las correcciones están en `revision_sql.md`.
+
+## Prompt 0: análisis de diferencias de los tres diseños (Parte 0)
+
+Las decisiones del equipo sobre cada conflicto están en `diferencias_diseno.md`, sección 6.
+
+```text
+Eres un analista de diseño de software. Un equipo de tres personas (Ángel, Leonardo, Erick) diseñó por separado, para el mismo sistema (SGPIS, AMPIP), una especificación OpenAPI, un diagrama de clases y una arquitectura de componentes. Tu trabajo es el análisis de diferencias que el equipo usará para consolidar. NO resuelvas los conflictos: el equipo los resuelve. Puedes dar una recomendación por conflicto, marcada como recomendación.
+
+Insumos (lee todo antes de escribir; todos bajo S05_S06_A1/insumos/):
+- Ángel: `Angel_S04_A2_v2/openapi.yaml`, `Angel_S04_A1_v2/diagrama_clases.puml`, `Angel_S04_A1_v2/diagrama_componentes.puml`, `Angel_S04_A1_v2/decision_arquitectonica.md`. (Hay también una versión anterior `Angel_*_v1`, hecha contra su SRS individual; úsala solo si necesitas aclarar algo, el diseño que cuenta es el v2.)
+- Leonardo: `Leonardo_S04_A2/openapi.yaml`, `Leonardo_S04_A1/diagrama_clases.puml`, `Leonardo_S04_A1/diagrama_componentes.puml`, `Leonardo_S04_A1/decision_arquitectonica.md`.
+- Erick: `Erick_S04_A2/openapi.yaml`, `Erick_S04_A1/diagrama_clases_agente.puml`, `Erick_S04_A1/diagrama_componentes_agente.puml`, `Erick_S04_A1/decision_arquitectonica.md`.
+- Referencia: el SRS de equipo `S03_A1/SRS_equipo.md` (IDs RF-XX-AC-Y) y el borrador de consolidación que ya existe, `S05_S06_A1/openapi_equipo.yaml` y `S05_S06_A1/diagrama_clases_equipo.puml`. Usa el borrador solo para la columna "en el borrador", no como un cuarto diseño.
+
+Escribe un solo archivo: `S05_S06_A1/evidencia_agente/analisis_diferencias_agente.md`, con estas secciones:
+
+1. OpenAPI. Agrupa las operaciones por recurso o propósito (no hace falta listar cada operación una por una cuando un grupo es consenso). Tres tablas:
+   a) Consenso: propósitos que los tres cubren. Columnas: propósito, ruta y método de cada integrante, ¿en el borrador?
+   b) Gaps: propósitos que solo uno o dos cubren. Columnas: propósito, quién lo propone, ruta, RF/AC del SRS que lo justifica (o "sin RF"), prioridad del RF en el SRS, ¿en el borrador?
+   c) Conflictos: mismo propósito con distinto diseño (nombre de ruta, método, esquema del body, códigos de respuesta, autenticación). Columnas: ID (O-01...), propósito, diseño de cada uno, por qué importa, recomendación.
+   Además, una tabla corta de diferencias transversales: ruta base y versión, esquema de seguridad (nombre, JWT con o sin sesión), formato de error, paginación, convención de nombres (camelCase o snake_case), cobertura de x-acceptance-criteria (cuántos AC del SRS cubre cada contrato; calcúlalo con un script).
+2. Diagrama de clases. Las mismas tres tablas (consenso, gaps, conflictos con IDs K-01...). Señala especialmente: cómo modela cada uno los roles (herencia o atributo), la relación evidencia–criterio, las fases, la bitácora, el expediente por generación, y si los atributos de cada clase corresponden a los campos de su propio OpenAPI.
+3. Arquitectura. Estilo elegido por cada uno, contenedores, almacenamiento de archivos, autenticación, procesos en segundo plano, despliegue. Tabla de consenso y tabla de conflictos (IDs Q-01...).
+4. Resumen en cifras: operaciones, rutas y schemas de cada contrato; clases de cada diagrama.
+
+Sé preciso: cita rutas y nombres reales de los archivos, sin inventar. Escribe en español. Es un análisis de agente que se guarda sin editar como evidencia, así que no hace falta pulir redacción, pero sí exactitud.
+
+Responde en menos de 200 palabras: cuántos consensos, gaps y conflictos encontraste en cada artefacto, y los 5 conflictos que consideras más importantes de resolver.
+```
 
 ## Prompt 1: esquema de base de datos (Parte 1)
 

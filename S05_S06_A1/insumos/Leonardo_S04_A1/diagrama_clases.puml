@@ -1,0 +1,278 @@
+@startuml
+title SGPIS - Diagrama de clases del dominio
+hide empty methods
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+left to right direction
+
+' =========================
+' Usuarios, roles y parques
+' =========================
+abstract class Usuario {
+  +id: UUID
+  +nombre: String
+  +correo: String
+  +activo: Boolean
+}
+
+class Rol {
+  +id: UUID
+  +nombre: TipoRol
+  +descripcion: String
+}
+
+class ParqueIndustrial {
+  +id: UUID
+  +nombre: String
+  +ubicacion: String
+  +tipo: TipoParque
+  +estado: EstadoParque
+  +fechaRegistro: Date
+}
+
+class AsignacionConsultor {
+  +id: UUID
+  +fechaAsignacion: Date
+  +fechaFin: Date [0..1]
+  +activo: Boolean
+}
+
+Usuario "0..*" -- "1..*" Rol : tiene
+Usuario "1" -- "0..*" AsignacionConsultor : recibe
+ParqueIndustrial "1" -- "0..*" AsignacionConsultor : asigna consultor
+
+Usuario <|-- CoordinacionAMPIP
+Usuario <|-- DirectorGeneralAMPIP
+Usuario <|-- APPI
+Usuario <|-- ConsultorAsignado
+Usuario <|-- ConsultorComite
+Usuario <|-- GerenteCorporativo
+Usuario <|-- AdministradorTecnico
+
+class CoordinacionAMPIP
+class DirectorGeneralAMPIP
+class APPI
+class ConsultorAsignado
+class ConsultorComite
+class GerenteCorporativo
+class AdministradorTecnico
+
+' =========================
+' Catálogo y autoevaluación
+' =========================
+class EstandarSeguridad {
+  +id: UUID
+  +nombre: String
+  +descripcion: String
+  +orden: Integer
+}
+
+class CriterioSeguridad {
+  +id: UUID
+  +codigo: String
+  +descripcion: String
+  +versionChecklist: String
+}
+
+class EvaluacionParque {
+  +id: UUID
+  +fechaInicio: Date
+  +fechaCierre: Date [0..1]
+  +estado: EstadoEvaluacion
+  +versionChecklist: String
+}
+
+class RespuestaCriterio {
+  +id: UUID
+  +categoria: CategoriaCriterio
+  +observaciones: String
+  +fechaActualizacion: DateTime
+}
+
+ParqueIndustrial "1" *-- "0..*" EvaluacionParque : historial de evaluaciones
+EstandarSeguridad "1" *-- "1..*" CriterioSeguridad : contiene
+EvaluacionParque "1" *-- "1..*" RespuestaCriterio : registra respuestas
+CriterioSeguridad "1" -- "0..*" RespuestaCriterio : se responde en
+Usuario "1" -- "0..*" EvaluacionParque : responsable
+
+' =========================
+' Evidencias y revisión
+' =========================
+class Evidencia {
+  +id: UUID
+  +nombreArchivo: String
+  +tipoContenido: String
+  +tamanoBytes: Long
+  +ubicacionObjeto: String
+  +numeroVersion: Integer
+  +estado: EstadoEvidencia
+  +fechaCarga: DateTime
+}
+
+class RevisionEvidencia {
+  +id: UUID
+  +resultado: ResultadoRevision
+  +comentarios: String
+  +fechaRevision: DateTime
+}
+
+RespuestaCriterio "1" *-- "0..*" Evidencia : evidencia asociada
+Usuario "1" -- "0..*" Evidencia : carga
+Evidencia "1" *-- "0..*" RevisionEvidencia : historial de revisiones
+Usuario "1" -- "0..*" RevisionEvidencia : revisa
+
+' =========================
+' Fases, plan y entregables
+' =========================
+class FaseProceso {
+  +id: UUID
+  +nombre: NombreFase
+  +estado: EstadoFase
+  +fechaInicio: Date [0..1]
+  +fechaVencimiento: Date [0..1]
+  +fechaCierre: Date [0..1]
+}
+
+class PlanTrabajo {
+  +id: UUID
+  +descripcion: String
+  +fechaCreacion: Date
+  +estado: EstadoPlan
+}
+
+class Opinion {
+  +id: UUID
+  +numero: Integer
+  +fechaEmision: Date
+  +resultado: String
+  +observaciones: String
+  +version: Integer
+}
+
+class EvaluacionFinal {
+  +id: UUID
+  +fechaEvaluacion: Date
+  +resultado: String
+  +observaciones: String
+  +version: Integer
+}
+
+ParqueIndustrial "1" *-- "1..*" FaseProceso : ciclo del programa
+ParqueIndustrial "1" *-- "0..*" PlanTrabajo : planes
+PlanTrabajo "1" -- "1..*" FaseProceso : organiza
+ParqueIndustrial "1" *-- "0..*" Opinion : opiniones emitidas
+ParqueIndustrial "1" *-- "0..*" EvaluacionFinal : evaluaciones finales
+Usuario "1" -- "0..*" Opinion : elabora
+Usuario "1" -- "0..*" EvaluacionFinal : elabora
+
+' =========================
+' Trazabilidad
+' =========================
+class RegistroAuditoria {
+  +id: UUID
+  +fechaHora: DateTime
+  +accion: String
+  +entidad: String
+  +entidadId: UUID
+  +detalle: String
+  +resultado: String
+}
+
+Usuario "0..1" -- "0..*" RegistroAuditoria : actor de
+ParqueIndustrial "0..1" -- "0..*" RegistroAuditoria : ámbito de
+
+' =========================
+' Enumeraciones del dominio
+' =========================
+enum TipoRol {
+  COORDINACION_AMPIP
+  DIRECTOR_GENERAL_AMPIP
+  APPI
+  CONSULTOR_ASIGNADO
+  CONSULTOR_COMITE
+  GERENTE_CORPORATIVO
+  ADMIN_TECNICO
+}
+
+enum TipoParque {
+  EN_CONSTRUCCION_ABIERTO
+  EN_CONSTRUCCION_CERRADO
+  EN_OPERACION_ABIERTO
+  EN_OPERACION_CERRADO
+}
+
+enum EstadoParque {
+  ACTIVO
+  INACTIVO
+}
+
+enum CategoriaCriterio {
+  O
+  R
+  NA
+}
+
+enum EstadoEvaluacion {
+  BORRADOR
+  EN_PROCESO
+  CERRADA
+}
+
+enum EstadoEvidencia {
+  PENDIENTE
+  ENVIADA
+  OBSERVADA
+  ACEPTADA
+}
+
+enum ResultadoRevision {
+  ACEPTADA
+  OBSERVADA
+}
+
+enum NombreFase {
+  DIAGNOSTICO
+  PLAN_DE_TRABAJO
+  POLITICA_DE_SEGURIDAD
+  ANALISIS_DE_RIESGOS
+  IMPLEMENTACION_ESTANDARES
+  OPINION_INTERMEDIA
+  OPINION_FINAL
+  EVALUACION_DESEMPENO
+  DICTAMEN
+}
+
+enum EstadoFase {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+}
+
+enum EstadoPlan {
+  BORRADOR
+  ACTIVO
+  CERRADO
+}
+
+note right of RespuestaCriterio
+  La categoría NA no se incluye
+  en el denominador del cálculo
+  de cumplimiento.
+end note
+
+note right of Opinion
+  El dominio requiere dos Opiniones
+  antes de la Evaluación final para
+  el proceso de distintivo aplicable.
+  Validar esta regla en la lógica
+  de negocio.
+end note
+
+note bottom of Evidencia
+  El archivo binario se almacena en
+  almacenamiento de objetos. La clase
+  conserva la referencia y metadatos,
+  no el contenido binario en PostgreSQL.
+end note
+
+@enduml

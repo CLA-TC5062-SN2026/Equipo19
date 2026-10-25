@@ -1,0 +1,119 @@
+@startuml despliegue_agente
+
+' SGPIS: diagrama de despliegue
+' Estilo: cliente-servidor con backend monolítico modular en capas (estilo_agente.md)
+' Restricciones: RNF-05 (un proveedor, región fija MX o EE. UU.), RD-12 (sin licencias por usuario),
+'                RNF-13 (respaldos diarios), RNF-08 (monitoreo externo)
+
+title SGPIS: diagrama de despliegue
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam nodesep 40
+skinparam ranksep 60
+
+actor "Usuarios del programa\n(Coordinación, DG, APPI,\nconsultores, gerente corporativo)" as usuarios
+actor "Administrador técnico" as admin
+
+' ---------- Cliente ----------
+node "Dispositivo del usuario\n(escritorio o móvil)" as dispositivo {
+  node "Navegador web\nChrome / Safari\n(Android, iOS, escritorio)" as navegador <<cliente web>> {
+    artifact "SPA SGPIS\n(JS/CSS estático, React + Vite)" as spa_cliente
+  }
+}
+
+' ---------- Proveedor cloud único ----------
+cloud "Proveedor cloud único\nregión fija: México o EE. UU. (RNF-05)" as proveedor {
+
+  node "Servidor virtual Linux\nUbuntu 24.04 LTS\n2 vCPU, 4 GB RAM, disco SSD" as vm <<servidor cloud>> {
+
+    node "Docker Engine + docker compose\n(red interna sgpis_net)" as compose <<entorno de contenedores>> {
+
+      node "proxy\nCaddy 2\npuertos 80/443" as proxy <<contenedor>> {
+        artifact "dist/ de la SPA" as dist
+        artifact "Caddyfile\n(TLS automático Let's Encrypt,\n/api/* -> api:8000)" as caddyfile
+      }
+
+      node "api\nPython 3.12 + Uvicorn\npuerto 8000 (solo red interna)" as api <<contenedor>> {
+        artifact "sgpis-backend\n(imagen FastAPI)" as img_api
+      }
+
+      node "worker\nPython 3.12\n(sin puertos expuestos)" as worker <<contenedor>> {
+        artifact "sgpis-backend\n(misma imagen, comando worker:\nplazos 00:00 CDMX, outbox,\nrespaldo 02:00 CDMX, depuración)" as img_worker
+      }
+
+      node "db\nPostgreSQL 16\npuerto 5432 (solo red interna)" as dbc <<contenedor>> {
+        database "sgpis\n(bitácora: REVOKE UPDATE, DELETE)" as db
+      }
+    }
+
+    storage "Volumen persistente\npgdata (disco del servidor)" as vol
+  }
+
+  storage "Bucket de evidencias\nprivado, cifrado en reposo,\nsin acceso público" as bucket_ev
+  storage "Bucket de respaldos\nregla de ciclo de vida: 30 días" as bucket_bk
+}
+
+' ---------- Externos ----------
+cloud "Monitoreo externo\n(servicio de uptime)" as monitoreo
+cloud "Correo transaccional\n(SMTP, cobro por volumen)" as smtp
+node "GitHub\nrepositorio + Actions +\nregistro de imágenes (GHCR)" as github <<CI/CD>>
+
+' ---------- Conexiones ----------
+usuarios --> navegador : usa
+navegador --> proxy : HTTPS 443\n(descarga SPA y llama /api/*)
+proxy --> api : HTTP 8000\nred interna
+api --> dbc : TCP 5432\nSQLAlchemy
+worker --> dbc : TCP 5432
+db .. vol : persiste en
+api --> bucket_ev : HTTPS, API S3\n(lectura/escritura de evidencias)
+worker --> bucket_ev : HTTPS, API S3\n(lectura para respaldo, depuración RNF-14)
+worker --> bucket_bk : HTTPS, API S3\n(pg_dump diario + copia de evidencias)
+worker --> smtp : SMTP TLS 587\n(3 reintentos)
+monitoreo --> proxy : HTTPS GET /api/salud\ncada 5 min
+monitoreo ..> admin : alerta por correo
+github --> vm : SSH: docker compose pull && up -d
+admin --> vm : SSH con llave
+
+' ---------- Notas de restricciones ----------
+note right of proveedor
+  <b>RNF-05</b>: servidor, base de datos (volumen) y ambos
+  buckets en el mismo proveedor y la misma región fija.
+  Ningún archivo sale de esa región, salvo hacia el
+  navegador del usuario autorizado.
+end note
+
+note bottom of bucket_bk
+  <b>RNF-13</b>: el worker escribe un volcado pg_dump
+  y una copia de evidencias cada día a las 02:00
+  America/Mexico_City; la regla de ciclo de vida borra
+  lo mayor a 30 días. Prueba de restauración mensual
+  documentada en un servidor temporal.
+end note
+
+note left of monitoreo
+  <b>RNF-08</b>: health check externo cada 5 min.
+  /api/salud devuelve error si la base de datos no
+  responde o si el worker lleva más de 24 h sin correr.
+  El historial del servicio da la disponibilidad mensual.
+  Sin despliegues en fechas críticas de AMPIP.
+end note
+
+note bottom of compose
+  <b>RD-12</b>: todo el software del servidor es de
+  código abierto (Ubuntu, Docker Engine, Caddy, Python,
+  FastAPI, PostgreSQL, React). El costo es de
+  infraestructura y de volumen de correo, no por usuario.
+  Sin certificados pagados: Let's Encrypt.
+end note
+
+note bottom of admin
+  RNF-02 se cumple en la aplicación. A nivel
+  infraestructura, quien tenga SSH o las credenciales
+  del bucket podría leer archivos: las credenciales
+  viven solo en variables de entorno de api y worker,
+  y el acceso SSH se limita al administrador técnico.
+  Pendiente de validar con AMPIP.
+end note
+
+@enduml

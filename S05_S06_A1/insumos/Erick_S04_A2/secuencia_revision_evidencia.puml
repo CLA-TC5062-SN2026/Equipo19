@@ -1,0 +1,106 @@
+@startuml
+title SGPIS - Carga y revision de evidencia
+
+actor "APPI" as APPI
+actor "Consultor asignado" as Consultor
+participant "Browser" as Browser
+participant "Frontend\nReact" as Frontend
+participant "Backend API\nFastAPI" as Backend
+database "PostgreSQL" as Database
+collections "Almacenamiento\nde objetos" as Objetos
+
+autonumber
+
+== Carga de evidencia ==
+APPI -> Browser : Selecciona archivos, criterios y fase
+Browser -> Frontend : Confirma carga
+Frontend -> Backend : POST /evidencias (multipart/form-data)
+activate Backend
+note right
+Authorization: Bearer JWT
+Body: parqueId, criterioIds, faseId,
+archivos y fechaVencimiento opcional
+end note
+Backend -> Backend : Valida JWT, rol APPI y pertenencia al parque
+alt Token ausente, invalido o expirado
+  Backend --> Frontend : 401 Unauthorized
+  Frontend --> Browser : Solicita iniciar sesion
+else APPI sin acceso al parque
+  Backend --> Frontend : 403 Forbidden
+  Frontend --> Browser : Muestra error de permisos
+else APPI autorizada
+  Backend -> Backend : Valida criterios aplicables, formato y tamano
+  alt Criterio no aplicable
+    Backend --> Frontend : 422 Unprocessable Entity
+    Frontend --> Browser : Muestra criterio rechazado
+  else Al menos un archivo valido
+    Backend -> Objetos : Guarda archivo no publico y cifrado
+    Objetos --> Backend : Referencia de objeto
+    Backend -> Database : INSERT evidencia, version y vinculos\nestado de cada vinculo=enviada
+    Backend -> Database : Actualiza evaluacion de criterio\npendiente -> en_revision si es primera evidencia
+    Backend -> Database : INSERT evento de bitacora de carga
+    Database --> Backend : Evidencia y vinculos creados
+    Backend --> Frontend : 201 Created (EvidenceUploadResult)
+    Frontend --> Browser : Muestra creadas y rechazadas por archivo
+  else Ningun archivo valido
+    Backend --> Frontend : 422 Unprocessable Entity
+    Frontend --> Browser : Muestra motivos por archivo
+  end
+end
+deactivate Backend
+
+== Revision por consultor asignado ==
+Consultor -> Browser : Abre evidencia enviada y selecciona criterio vinculado
+Browser -> Frontend : Captura resultado de revision
+
+alt Evidencia insuficiente: observacion
+  Frontend -> Backend : POST /evidencias/{evidenciaId}/observaciones
+  activate Backend
+  note right
+  Body: criterioId, motivo
+  end note
+  Backend -> Backend : Valida JWT, rol Consultor y asignacion al parque
+  alt Consultor no asignado
+    Backend --> Frontend : 403 Forbidden
+    Frontend --> Browser : Muestra error de permisos
+  else Consultor asignado
+    Backend -> Database : INSERT observacion y actualiza vinculo\nestado=enviada -> observada
+    Backend -> Database : Conserva evaluacion en_revision\ny registra bitacora
+    Database --> Backend : Observacion creada
+    Backend -> Database : Registra aviso por correo para el contacto\nprincipal APPI y hasta tres reintentos
+    note right of Backend
+    RNF-12: el Backend envia el aviso por correo mediante el canal
+    ya definido en la arquitectura. No representa un endpoint ni una
+    integracion adicional del dominio.
+    end note
+    Backend --> Frontend : 201 Created (Observation)
+    Frontend --> Browser : Confirma observacion registrada
+  end
+  deactivate Backend
+else Evidencia suficiente: aceptacion
+  Frontend -> Backend : PUT /evidencias/{evidenciaId}/aceptacion
+  activate Backend
+  note right
+  Body: criterioId
+  end note
+  Backend -> Backend : Valida JWT, rol Consultor y asignacion al parque
+  alt Token invalido o consultor no asignado
+    Backend --> Frontend : 401 Unauthorized o 403 Forbidden
+    Frontend --> Browser : Muestra error de acceso
+  else Vinculo enviado y consultor asignado
+    Backend -> Database : Actualiza vinculo de evidencia\nestado=enviada -> aceptada
+    Backend -> Database : Registra cambio y bitacora
+    Database --> Backend : Evidencia actualizada
+    Backend --> Frontend : 200 OK (Evidence)
+    Frontend --> Browser : Confirma evidencia aceptada
+  end
+  deactivate Backend
+end
+
+note bottom
+Representa RF-05-AC-1, AC-2, AC-3, AC-5, AC-7, AC-8;
+RF-06-AC-1 a AC-5; y RF-27-AC-1, AC-4 y AC-5.
+La aceptacion y la observacion se aplican al vinculo evidencia-criterio,
+por lo que un mismo archivo puede revisarse de forma independiente.
+end note
+@enduml

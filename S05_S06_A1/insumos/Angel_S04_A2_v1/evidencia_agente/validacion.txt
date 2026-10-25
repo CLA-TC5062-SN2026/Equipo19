@@ -1,0 +1,34 @@
+# Validación de openapi.yaml (v1.1.0) y de evidencia_agente/openapi_v0.yaml
+# Fecha: 2026-10-11 11:45 (America/Mexico_City)
+
+## 1. Swagger Editor (editor.swagger.io)
+openapi.yaml cargado completo: sin errores ni advertencias. Captura en swagger_editor.png.
+
+## 2. openapi-spec-validator (Python)
+openapi.yaml: válido (OpenAPI 3.0.3)
+
+## 3. swagger-cli validate (parser de Swagger, @apidevtools/swagger-parser)
+openapi.yaml is valid
+evidencia_agente/openapi_v0.yaml is valid
+
+## 4. Redocly CLI lint, versión final
+validating openapi.yaml...
+  2:1     warning  info-license            Info object should contain `license` field.
+  80:10   warning  no-server-example.com   Server `url` should not point to example.com or localhost.
+  2748:7  warning  operation-4xx-response  Operation must have at least one `4XX` response.
+openapi.yaml: validated in 270ms
+Woohoo! Your API description is valid. 🎉
+You have 3 warnings.
+(operation-4xx-response en GET /salud: el health check no tiene error de cliente posible; se acepta.)
+
+## 5. Redocly CLI lint, v0 del agente (para comparar)
+validating evidencia_agente/openapi_v0.yaml...
+  2824:21  error    nullable-type-sibling  The `type` field must be defined when the `nullable` field is used.
+  2836:21  error    nullable-type-sibling  The `type` field must be defined when the `nullable` field is used.
+  2:1      warning  info-license           Info object should contain `license` field.
+  18:10    warning  no-server-example.com  Server `url` should not point to example.com or localhost.
+evidencia_agente/openapi_v0.yaml: validated in 170ms
+❌ Validation failed with 2 errors and 2 warnings.
+
+## 6. Cobertura de criterios de aceptación (script propio sobre x-acceptance-criteria)
+AC en el SRS v1.4: 110; en alcance: 101; mapeados: 101; sin mapear en alcance: ninguno; IDs inexistentes en el SRS: ninguno; rutas: 51; operaciones: 75

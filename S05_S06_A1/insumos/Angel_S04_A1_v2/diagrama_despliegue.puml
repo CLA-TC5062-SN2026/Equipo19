@@ -1,0 +1,89 @@
+@startuml diagrama_despliegue
+' SGPIS · S04-A1 · Diagrama de despliegue (UML)
+' Ambiente de piloto/producción en un proveedor cloud con región fija en México o EE. UU. (RNF-05),
+' más el ambiente de desarrollo que ya usa el Sprint 1 (T-01) y la integración continua (T-06).
+' El proveedor concreto queda abierto (ADR-001, consecuencias); los nodos describen lo que se necesita de él.
+
+title SGPIS · Diagrama de despliegue
+
+skinparam shadowing false
+skinparam linetype ortho
+skinparam nodesep 40
+skinparam ranksep 60
+skinparam defaultTextAlignment center
+
+node "Dispositivo del usuario\n(PC, Android o iOS)" as dispositivo {
+  node "Navegador\nChrome / Safari" <<execution environment>> as navegador {
+    artifact "SPA SGPIS\n(HTML, JS, CSS)" as spa_runtime
+  }
+}
+
+cloud "Proveedor cloud · región México o EE. UU. (RNF-05)" as nube {
+
+  node "VM Linux (Ubuntu 24.04 LTS)\n2 vCPU · 4 GB RAM" <<device>> as vm {
+    node "Docker Engine + Docker Compose" <<execution environment>> as docker {
+      node "contenedor proxy\nCaddy 2" <<container>> as c_proxy {
+        artifact "spa/dist\n(build de Vite)" as spa_build
+        artifact "Caddyfile\nTLS automático" as caddyfile
+      }
+      node "contenedor api\nuvicorn · FastAPI · 2 workers" <<container>> as c_api {
+        artifact "sgpis-backend:<versión>\n(imagen OCI)" as img_api
+      }
+      node "contenedor worker\nAPScheduler" <<container>> as c_worker {
+        artifact "sgpis-backend:<versión>\n(misma imagen, otro comando)" as img_worker
+      }
+    }
+  }
+
+  database "PostgreSQL 16 gestionado\ncifrado en reposo\nrespaldo diario, retención 30 días (RNF-13)" <<managed service>> as pg
+
+  storage "Bucket de objetos privado\ncifrado en reposo · sin acceso público\nversionado activado" <<managed service>> as bucket
+}
+
+node "Proveedor de correo\n(SMTP con TLS)" <<external>> as smtp
+node "Monitoreo externo\n(health check cada 5 min, RNF-08)" <<external>> as monitor
+
+node "GitHub" <<external>> as github {
+  node "GitHub Actions" <<execution environment>> as gha {
+    artifact "CI: ruff + pytest\ncon PostgreSQL de servicio (T-06)" as ci
+  }
+  artifact "GitHub Container Registry\nsgpis-backend:<versión>" as ghcr
+}
+
+node "Máquina de desarrollo\n(cada integrante)" <<device>> as dev {
+  node "Docker Compose (T-01)" <<execution environment>> as dev_compose {
+    node "postgres:16" <<container>> as dev_pg
+    node "minio\n(S3 local)" <<container>> as dev_minio
+  }
+  artifact "uv run uvicorn\n(API en modo recarga)" as dev_api
+}
+
+navegador --> c_proxy : HTTPS :443\nTLS 1.2+ (RNF-15)
+navegador --> bucket : HTTPS GET\nURL firmada ≤ 5 min
+c_proxy --> c_api : HTTP :8000\n(red interna de Docker)
+c_api --> pg : TLS :5432
+c_worker --> pg : TLS :5432
+c_api --> bucket : API S3 · HTTPS
+c_worker --> smtp : SMTP :587 · STARTTLS
+monitor --> c_proxy : HTTPS GET /api/v1/health
+
+ci --> ghcr : publica la imagen\nal fusionar en main
+vm ..> ghcr : docker compose pull\n(despliegue manual con etiqueta)
+
+dev_api --> dev_pg : :5432
+dev_api --> dev_minio : :9000
+
+note right of pg
+  Usuario de base de la aplicación
+  sin UPDATE ni DELETE sobre
+  eventos_bitacora (RNF-03, T-04).
+end note
+
+note bottom of vm
+  Un solo servidor alcanza para 80 parques y ~150 usuarios
+  con 30 cargas simultáneas (RNF-07, RNF-10). Si no alcanza,
+  se agrega un segundo contenedor api detrás del mismo proxy:
+  la API no guarda estado en memoria (sesiones en PostgreSQL).
+end note
+
+@enduml

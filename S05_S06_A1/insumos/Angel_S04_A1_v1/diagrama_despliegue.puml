@@ -1,0 +1,113 @@
+' SGPIS: diagrama de despliegue
+' Estilo: cliente-servidor con backend monolítico modular en capas (decision_arquitectonica.md, ADR-001).
+' Restricciones del SRS: RNF-05 (un proveedor, región fija), RD-12 (sin licencias por usuario),
+' RNF-13 (respaldos diarios, 30 días), RNF-08 (monitoreo externo cada 5 min), RNF-11 (hora de CDMX).
+' Revisión de la propuesta del agente: evidencia_agente/despliegue_agente.puml.
+
+@startuml diagrama_despliegue
+title SGPIS: diagrama de despliegue (producción)
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam nodesep 40
+skinparam ranksep 60
+
+actor "Usuarios del programa\n(Coordinación, Director General,\nAPPI, consultores, gerente corporativo)" as usuarios
+actor "Administrador técnico" as admin
+
+node "Dispositivo del usuario\n(escritorio o móvil)" as dispositivo {
+  node "Navegador web\nChrome / Safari\n(Android, iOS, escritorio)" as navegador <<cliente web>> {
+    artifact "SPA SGPIS\n(JS/CSS estático, React + Vite)" as spa_cliente
+  }
+}
+
+cloud "Proveedor cloud único\nregión fija en México o EE. UU. (RNF-05)" as proveedor {
+
+  node "Servidor virtual Linux\nUbuntu 24.04 LTS\n2 vCPU, 4 GB RAM, SSD (dimensionamiento inicial)" as vm <<servidor cloud>> {
+
+    node "Docker Engine + docker compose\n(red interna sgpis_net)" as compose <<entorno de contenedores>> {
+
+      node "proxy\nCaddy 2\npuertos 80/443 (únicos expuestos)" as proxy <<contenedor>> {
+        artifact "dist/ de la SPA" as dist
+        artifact "Caddyfile\nTLS automático (Let's Encrypt)\n/api/v1/* -> api:8000\nlímite de cuerpo 110 MB" as caddyfile
+      }
+
+      node "api\nPython 3.12 + Uvicorn\npuerto 8000 (solo red interna)" as api <<contenedor>> {
+        artifact "sgpis-backend\n(imagen FastAPI)" as img_api
+      }
+
+      node "worker\nPython 3.12\nsin puertos" as worker <<contenedor>> {
+        artifact "sgpis-backend\n(misma imagen, comando worker)\nTZ=America/Mexico_City" as img_worker
+      }
+
+      node "db\nPostgreSQL 16\npuerto 5432 (solo red interna)" as dbc <<contenedor>> {
+        database "sgpis\n(bitácora: REVOKE UPDATE, DELETE)" as db
+      }
+    }
+
+    storage "Volumen persistente\npgdata" as vol
+  }
+
+  storage "Bucket de evidencias\nprivado, cifrado en reposo" as bucket_ev
+  storage "Bucket de respaldos\nciclo de vida: 30 días" as bucket_bk
+}
+
+rectangle "Servicios externos (fuera del proveedor; no guardan evidencias)" as externos {
+  cloud "Monitoreo externo\n(servicio de uptime)" as monitoreo
+  cloud "Correo transaccional\n(SMTP, cobro por volumen)" as smtp
+  node "GitHub\nrepositorio TC5062 +\nregistro de imágenes (GHCR)" as github <<código e imágenes>>
+}
+
+usuarios --> navegador : usa
+navegador --> proxy : HTTPS 443\n(descarga la SPA y llama /api/v1/*)
+proxy --> api : HTTP 8000\nred interna
+api --> dbc : TCP 5432
+worker --> dbc : TCP 5432
+db .. vol : persiste en
+api --> bucket_ev : HTTPS, API S3
+worker --> bucket_ev : HTTPS, API S3\n(respaldo y depuración)
+worker --> bucket_bk : HTTPS, API S3\n(pg_dump diario + copia de evidencias)
+worker --> smtp : SMTP TLS 587
+monitoreo --> proxy : HTTPS GET /api/v1/salud\ncada 5 min
+monitoreo ..> admin : alerta por correo
+admin --> vm : SSH con llave:\ndocker compose pull && up -d
+vm ..> github : descarga imágenes
+
+note right of proveedor
+  <b>RNF-05</b>: servidor, volumen y los dos buckets
+  en el mismo proveedor y la misma región.
+  El proveedor concreto queda pendiente de
+  confirmar con AMPIP (ADR-001).
+end note
+
+note bottom of bucket_bk
+  <b>RNF-13</b>: respaldo diario a las 02:00 de CDMX,
+  retención de 30 días, prueba de restauración mensual
+  en un servidor temporal. Mismo proveedor y región
+  por RNF-05: protege contra borrado o corrupción,
+  no contra la caída completa de la región.
+end note
+
+note left of monitoreo
+  <b>RNF-08</b>: /api/v1/salud responde 503 si la base
+  no contesta o si el worker lleva más de 24 h
+  sin correr. El historial del servicio da la
+  disponibilidad mensual.
+end note
+
+note bottom of compose
+  <b>RD-12</b>: todo el software del servidor es de código
+  abierto. El costo es de infraestructura y volumen de
+  correo, no por usuario. Certificados de Let's Encrypt.
+  Desarrollo local: el mismo docker-compose en macOS.
+end note
+
+note bottom of admin
+  El administrador técnico entra al servidor, no a la
+  aplicación. Las credenciales del bucket viven solo en
+  las variables de entorno de api y worker. Quien tenga
+  SSH podría leer archivos: RNF-02 se cumple en la
+  aplicación y se apoya en limitar el acceso SSH.
+end note
+
+@enduml

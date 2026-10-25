@@ -1,0 +1,50 @@
+@startuml
+title SGPIS - Diagrama de despliegue
+top to bottom direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+node "Dispositivo del usuario" as CLIENT {
+  artifact "Navegador web\nChrome o Safari\nComputadora, tableta o móvil" as BROWSER
+}
+
+cloud "Entorno cloud" as CLOUD {
+  node "Capa de entrada" as EDGE {
+    component "HTTPS / TLS\nDNS y punto de entrada seguro" as HTTPS
+  }
+
+  node "Red privada de aplicación" as APP {
+    artifact "Contenedor frontend web\nAplicación web y recursos estáticos" as FRONT
+    artifact "Contenedor backend\nPython + API REST" as BACK
+    artifact "Contenedor trabajador\nTareas asíncronas y programadas" as JOB
+  }
+
+  queue "Cola de tareas\nOpcional según implementación" as QUEUE
+
+  database "PostgreSQL\nBase de datos" as PG
+  cloud "Almacenamiento de objetos\nEvidencias y documentos" as STORAGE
+
+  component "Monitoreo y registros\nSalud, errores y auditoría técnica" as MON
+  component "Respaldos automáticos\nBase de datos y evidencias" as BACKUP
+}
+
+cloud "Proveedor externo de correo electrónico" as EMAIL
+
+BROWSER --> HTTPS : HTTPS
+HTTPS --> FRONT
+FRONT --> BACK : API REST sobre HTTPS
+
+BACK --> PG : SQL / conexión privada
+BACK --> STORAGE : API segura de objetos
+
+BACK --> QUEUE : Publica tareas
+QUEUE --> JOB : Entrega tareas
+JOB --> PG : Consulta o actualiza datos
+JOB --> EMAIL : Envía notificaciones
+
+BACK ..> MON
+FRONT ..> MON
+JOB ..> MON
+PG ..> BACKUP
+STORAGE ..> BACKUP
+@enduml

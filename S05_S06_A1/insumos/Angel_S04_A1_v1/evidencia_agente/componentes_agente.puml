@@ -1,0 +1,63 @@
+@startuml componentes_agente
+!include <C4/C4_Container>
+
+' SGPIS: diagrama de contenedores (C4 nivel 2)
+' Estilo: cliente-servidor con backend monolítico modular en capas (estilo_agente.md)
+' Fuentes: SRS_final.md v1.4, stack_decision.md
+
+title SGPIS: diagrama de contenedores (C4 nivel 2)
+
+LAYOUT_TOP_DOWN()
+
+' ---------- Personas (roles de 2.3 y RF-03) ----------
+Person(coord, "Coordinación AMPIP", "Administra catálogo, generaciones, parques, usuarios y asignaciones; consulta avance y reportes. No abre evidencias de seguridad (RNF-02).")
+Person(dg, "Director General AMPIP", "Firma el dictamen (RF-14).")
+Person(appi, "APPI", "Gerente y asistentes del parque. Autoevalúa y sube evidencias, muchas veces desde el celular (RNF-09).")
+Person(consultor, "Consultor", "Asignado: revisa evidencias, califica criterios, emite Opiniones. De comité: lectura temporal del expediente (RF-13).")
+Person(corp, "Gerente corporativo", "Solo lectura del avance de los parques de su desarrollador (RF-23).")
+Person(admin, "Administrador técnico", "Mantenimiento de la plataforma; sin acceso a evidencias ni documentos administrativos (RNF-02).")
+
+' ---------- Sistema ----------
+System_Boundary(sgpis, "SGPIS: Sistema de Gestión del Programa Parque Industrial Seguro") {
+
+  Container(spa, "Aplicación web (SPA)", "React 18, TypeScript 5, Vite 5, Tailwind CSS", "Formularios, tablas y gráficas simples (2.4). Valida formato de entrada. No decide autorización ni reglas de negocio: lo que oculta, la API lo vuelve a negar.")
+
+  Container(api, "API REST", "Python 3.12, FastAPI, Uvicorn, Pydantic v2, SQLAlchemy 2.0", "Monolito modular en capas: API, autorización, servicios de dominio, repositorios. Módulos: autenticación, catálogo, organización, expediente, dictamen, reportes, bitácora. Único punto de autorización (RNF-01, RNF-02, RNF-04). Sirve el contenido de evidencias; nunca expone el bucket al cliente.")
+
+  Container(worker, "Worker de tareas programadas", "Python 3.12, misma imagen y código que la API", "Revisión diaria de plazos a las 00:00 America/Mexico_City (RF-09, RF-30, RNF-11). Envía correos desde la tabla outbox con 3 reintentos (RNF-12). Respaldo diario (RNF-13) y depuración por antigüedad (RNF-14). Registra la fecha de su última corrida.")
+
+  ContainerDb(db, "Base de datos", "PostgreSQL 16", "Catálogo y versiones, generaciones, parques, usuarios, asignaciones, estados de criterio, metadatos de evidencias, opiniones, dictámenes, outbox de correo. Bitácora de solo append: el usuario de la aplicación no tiene UPDATE ni DELETE (RNF-03).")
+
+  ContainerDb(objetos, "Almacenamiento de evidencias", "Almacenamiento de objetos compatible con S3, bucket privado", "Archivos de evidencia de hasta 100 MB: PDF, JPG, PNG, HEIC, XLSX, DOCX (RF-06). Región fija en México o EE. UU. (RNF-05). Sin acceso público.")
+
+  ContainerDb(respaldos, "Almacenamiento de respaldos", "Bucket separado, mismo proveedor y región", "Volcado diario de PostgreSQL y copia diaria de evidencias, retención de 30 días (RNF-13).")
+}
+
+' ---------- Sistemas externos ----------
+System_Ext(correo, "Servicio de correo transaccional", "SMTP con TLS. Invitaciones de alta, recuperación de contraseña, observaciones, avisos de plazos y vencimientos (RNF-12). Cobro por volumen, no por usuario (RD-12).")
+System_Ext(monitoreo, "Monitoreo externo", "Servicio de disponibilidad (uptime), plan sin licencia por usuario. Health check cada 5 minutos; reporte mensual de disponibilidad (RNF-08).")
+
+' ---------- Relaciones: usuarios ----------
+Rel(coord, spa, "Usa", "HTTPS, navegador")
+Rel(dg, spa, "Firma dictámenes", "HTTPS, navegador")
+Rel(appi, spa, "Autoevalúa y sube evidencias; fotos con la cámara del dispositivo", "HTTPS, Chrome o Safari móvil y escritorio")
+Rel(consultor, spa, "Revisa, califica, emite Opiniones", "HTTPS, navegador")
+Rel(corp, spa, "Consulta avance consolidado", "HTTPS, navegador")
+Rel(admin, spa, "Usa herramientas técnicas de administración", "HTTPS, navegador")
+
+' ---------- Relaciones: interfaces internas ----------
+Rel(spa, api, "Llama a la API: JSON; carga de evidencias multipart; token de sesión en cabecera Authorization", "HTTPS, REST")
+Rel(api, db, "Lee y escribe; bitácora y outbox en la misma transacción que la operación", "SQL, TCP 5432")
+Rel(api, objetos, "Guarda y lee archivos; toda descarga pasa por la API y queda en bitácora", "API S3, HTTPS")
+Rel(worker, db, "Lee plazos, marca atrasos, consume outbox, registra última corrida", "SQL, TCP 5432")
+Rel(worker, objetos, "Lee evidencias para respaldo; depura las elegibles (RNF-14)", "API S3, HTTPS")
+Rel(worker, respaldos, "Escribe volcado pg_dump y copia de evidencias", "API S3, HTTPS")
+
+' ---------- Relaciones: sistemas externos ----------
+Rel(worker, correo, "Envía avisos; 3 reintentos y registro de falla en bitácora", "SMTP, TLS puerto 587")
+Rel(correo, appi, "Entrega avisos y observaciones", "Correo electrónico")
+Rel(monitoreo, api, "Consulta GET /api/salud cada 5 min: API, base de datos y última corrida del worker", "HTTPS")
+Rel(monitoreo, admin, "Alerta de caída o de worker sin correr en 24 h", "Correo electrónico")
+
+SHOW_LEGEND()
+@enduml

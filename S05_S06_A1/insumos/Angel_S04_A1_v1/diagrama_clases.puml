@@ -1,0 +1,358 @@
+' SGPIS: diagrama de clases del dominio
+' Fuente: SRS_final.md v1.4. Propuesta original del agente: evidencia_agente/clases_agente.puml.
+' Cambios sobre la propuesta y su justificación: decisiones_diagramas.md.
+' Notación: "/" antes de un atributo = derivado (se calcula, no se guarda).
+
+@startuml diagrama_clases
+skinparam classAttributeIconSize 0
+skinparam linetype polyline
+skinparam nodesep 50
+skinparam ranksep 60
+hide empty methods
+
+title SGPIS: diagrama de clases del dominio
+
+' ===================== Enumeraciones =====================
+package "Enumeraciones" <<Rectangle>> {
+enum Rol {
+  COORDINACION_AMPIP
+  DIRECTOR_GENERAL_AMPIP
+  APPI
+  CONSULTOR
+  GERENTE_CORPORATIVO
+  ADMINISTRADOR_TECNICO
+}
+enum TipoPI {
+  CONSTRUCCION_ABIERTO
+  CONSTRUCCION_CERRADO
+  OPERACION_ABIERTO
+  OPERACION_CERRADO
+}
+enum Marca {
+  O
+  R
+  NA
+}
+enum EstadoCalificacion {
+  PENDIENTE
+  EN_REVISION
+  CUMPLIDO
+  NO_CUMPLIDO
+}
+enum EstadoEvidencia {
+  ENVIADA
+  OBSERVADA
+  ACEPTADA
+}
+enum CategoriaEvidencia {
+  SEGURIDAD
+  ADMINISTRATIVA
+}
+enum Fase {
+  DIAGNOSTICO
+  PLAN_TRABAJO
+  POLITICA_SEGURIDAD
+  ANALISIS_RIESGOS
+  IMPLEMENTACION_ESTANDARES
+  OPINION_INTERMEDIA_EMITIDA
+  OPINION_FINAL_EMITIDA
+  EVALUACION_DESEMPENO
+  DICTAMEN
+}
+enum TipoDictamen {
+  OTORGAR
+  NO_OTORGAR
+}
+enum EstadoDictamen {
+  BORRADOR
+  FIRMADO
+}
+enum Region {
+  32 claves ISO 3166-2:MX
+  (MX-AGU ... MX-ZAC)
+}
+enum RespuestaAutoevaluacion {
+  CUMPLE
+  CUMPLE_PARCIAL
+  NO_CUMPLE
+}
+
+}
+
+' ===================== Usuarios y acceso =====================
+class Usuario {
+  id: UUID
+  nombre: String
+  correo: String
+  contrasenaHash: String
+  rol: Rol
+  estado: {pendiente_activacion, activo, inactivo}
+  fechaAlta: Date
+}
+note right of Usuario
+  Un solo tipo con atributo rol, sin subclases.
+  "Asignado" y "de comité" son relaciones del
+  consultor con un parque (AsignacionConsultor,
+  SesionComite), no tipos de usuario.
+end note
+
+class Sesion {
+  sid: UUID
+  creada: DateTime
+  ultimoAcceso: DateTime
+  revocadaEn: DateTime [0..1]
+  / vigente: boolean
+}
+class EnlaceUnSoloUso {
+  token: String
+  tipo: {invitacion, recuperacion}
+  creado: DateTime
+  usadoEn: DateTime [0..1]
+  / vigente: boolean
+}
+class IntentoLogin {
+  correo: String
+  intentosFallidos: int
+  bloqueadoHasta: DateTime [0..1]
+}
+note bottom of IntentoLogin
+  Se indexa por correo, no por usuario:
+  el contador corre también para correos
+  que no existen (contrato de S04_A2,
+  POST /sesiones).
+end note
+
+Usuario "1" *-- "0..*" Sesion
+Usuario "1" *-- "0..*" EnlaceUnSoloUso
+
+' ===================== Catálogo =====================
+class VersionCatalogo {
+  id: String
+  fechaCarga: DateTime
+  activa: boolean
+}
+class Estandar {
+  numero: int
+  nombre: String
+}
+class Subestandar {
+  numero: String
+  nombre: String
+}
+class Criterio {
+  clave: String
+  descripcion: String
+  metodoVerificacion: String
+  evidenciaSuficiente: String [0..1]
+  categoriaEvidencia: CategoriaEvidencia
+  asterisco: boolean
+}
+class MarcaPorTipo {
+  tipoPI: TipoPI
+  marca: Marca
+}
+
+VersionCatalogo "1" *-- "10" Estandar
+Estandar "1" *-- "1..*" Subestandar
+Subestandar "1" *-- "1..*" Criterio
+Criterio "1" *-- "4" MarcaPorTipo
+
+' ===================== Organización =====================
+class Generacion {
+  nombre: String
+  fechaInicio: Date
+}
+class Desarrollador {
+  nombre: String
+}
+class Parque {
+  id: UUID
+  nombre: String
+  region: Region
+  estado: {activo, inactivo, historico}
+  fechaAlta: Date
+  / tipoPIVigente: TipoPI
+}
+class ParqueHistorico {
+  fechaUltimoDictamen: Date
+  fechaTermino: Date
+}
+class ClasificacionTipoPI {
+  tipoPI: TipoPI
+  fechaDesde: Date
+  fechaHasta: Date [0..1]
+  obligatoriosAlCierre: decimal [0..1]
+  avanceGeneralAlCierre: decimal [0..1]
+}
+note bottom of ClasificacionTipoPI
+  Los porcentajes al cierre son una foto que
+  se congela al cambiar de tipo (RF-11-AC-2);
+  por eso se guardan y no se derivan.
+end note
+
+Parque <|-- ParqueHistorico
+Generacion "0..*" --> "1" VersionCatalogo : evalúa contra
+Desarrollador "0..1" -- "1..*" Parque
+Usuario "0..*" --> "0..1" Desarrollador : gerente corporativo de
+Usuario "0..3" --> "0..1" Parque : APPI de
+Parque "1" *-- "0..*" ClasificacionTipoPI
+
+' ===================== Expediente por generación =====================
+class Expediente {
+  fase: Fase
+  fechaTerminoPrograma: Date [0..1]
+  fechaProximaActualizacion: Date [0..1]
+  / atrasado: boolean
+  / cumplimientoObligatorios: decimal
+  / avanceGeneral: decimal
+}
+note right of Expediente
+  Un expediente por parque y generación:
+  RF-31 muestra las generaciones que cursó
+  cada parque. Las rutas /parques/{id}/... de
+  la API operan sobre el expediente vigente.
+end note
+class ActualizacionAnual {
+  fecha: Date
+}
+class AsignacionConsultor {
+  vigenteDesde: DateTime
+  vigenteHasta: DateTime [0..1]
+}
+
+Parque "1" *-- "0..*" Expediente
+Expediente "0..*" --> "1" Generacion
+Expediente "1" *-- "0..*" ActualizacionAnual
+Expediente "1" *-- "0..*" AsignacionConsultor
+AsignacionConsultor "0..*" --> "1" Usuario : consultor
+
+' ===================== Autoevaluación, criterios y evidencias =====================
+class RespuestaAutoevaluacion {
+  respuesta: RespuestaAutoevaluacion
+  comentario: String [0..1]
+  fecha: DateTime
+}
+class CriterioParque {
+  estadoCalificacion: EstadoCalificacion
+  fechaUltimoCambio: DateTime
+  motivoReapertura: String [0..1]
+  / marca: Marca
+  / atrasado: boolean
+}
+note bottom of CriterioParque
+  Solo existe para criterios O o R del tipo de PI
+  vigente. Transiciones en RF-27; "cumplido" exige
+  evidencia aceptada y, en estándares 2, 3 y 7,
+  análisis de riesgos vigente (RF-17).
+end note
+class Evidencia {
+  fase: Fase
+  categoria: CategoriaEvidencia
+  estado: EstadoEvidencia
+  fechaCarga: DateTime
+}
+class VersionEvidencia {
+  numero: int
+  nombreArchivo: String
+  tipoMime: String
+  tamanoBytes: long
+  rutaObjeto: String
+  fechaCarga: DateTime
+}
+class Observacion {
+  texto: String
+  fecha: DateTime
+}
+
+Expediente "1" *-- "0..*" RespuestaAutoevaluacion
+RespuestaAutoevaluacion "0..*" --> "1" Criterio
+Expediente "1" *-- "0..*" CriterioParque
+CriterioParque "0..*" --> "1" Criterio
+CriterioParque "1" *-- "0..*" Evidencia
+CriterioParque "0..*" --> "0..1" Usuario : calificado por
+Evidencia "1" *-- "1..*" VersionEvidencia
+Evidencia "1" *-- "0..*" Observacion
+VersionEvidencia "0..*" --> "1" Usuario : subida por
+Observacion "0..*" --> "1" Usuario : registrada por
+
+' ===================== Plan de trabajo y análisis de riesgos =====================
+class RenglonPlanTrabajo {
+  fechaComprometida: Date
+  / atrasado: boolean
+}
+class RevisionAnalisisRiesgos {
+  fechaRevision: Date
+  version: String
+  firmadoPor: String
+  resumen: String
+  ciclo: String
+  / vigente: boolean
+}
+class DocumentoAnalisisRiesgos {
+  nombreArchivo: String
+  rutaObjeto: String
+  fechaCarga: DateTime
+}
+
+Expediente "1" *-- "0..*" RenglonPlanTrabajo
+RenglonPlanTrabajo "0..1" --> "1" CriterioParque
+RenglonPlanTrabajo "0..*" --> "1" Usuario : responsable (APPI)
+Expediente "1" *-- "0..*" RevisionAnalisisRiesgos
+RevisionAnalisisRiesgos "0..*" --> "1" Usuario : registrada por
+Expediente "1" *-- "0..1" DocumentoAnalisisRiesgos
+
+' ===================== Opiniones, comité y dictamen =====================
+abstract class OpinionCumplimiento {
+  fecha: DateTime
+  cumplimientoObligatorios: decimal
+  avanceGeneral: decimal
+}
+class OpinionIntermedia
+class OpinionFinal {
+  favorable: boolean
+}
+class SesionComite {
+  abierta: DateTime
+  cerrada: DateTime [0..1]
+}
+class Dictamen {
+  tipo: TipoDictamen
+  motivo: String
+  estado: EstadoDictamen
+  fechaCaptura: DateTime
+  fechaFirma: DateTime [0..1]
+}
+
+OpinionCumplimiento <|-- OpinionIntermedia
+OpinionCumplimiento <|-- OpinionFinal
+Expediente "1" *-- "0..1" OpinionIntermedia
+Expediente "1" *-- "0..1" OpinionFinal
+OpinionCumplimiento "0..*" --> "1" Usuario : emitida por
+Expediente "1" *-- "0..*" SesionComite
+SesionComite "0..*" --> "1" Usuario : consultor de comité
+SesionComite "1" *-- "0..1" Dictamen
+Dictamen "0..*" --> "1" Usuario : capturado por
+Dictamen "0..*" --> "0..1" Usuario : firmado por (Director General)
+
+' ===================== Bitácora y correo =====================
+class RegistroBitacora {
+  fechaHora: DateTime
+  accion: String
+  resultado: String
+}
+class MensajeCorreo {
+  tipo: String
+  destinatario: String
+  intentos: int
+  enviadoEn: DateTime [0..1]
+}
+note bottom of RegistroBitacora
+  Solo append (RNF-03): no hay
+  operación de modificar ni borrar.
+end note
+
+RegistroBitacora "0..*" --> "1" Usuario
+RegistroBitacora "0..*" --> "0..1" Evidencia
+MensajeCorreo "0..*" --> "0..1" Usuario
+
+@enduml

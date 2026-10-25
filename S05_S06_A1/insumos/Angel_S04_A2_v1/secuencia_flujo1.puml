@@ -1,0 +1,96 @@
+@startuml secuencia_flujo1
+title SGPIS · Flujo 1: inicio de sesión, solicitud autenticada y cierre de sesión\n(RF-26; contrato openapi.yaml v1.1.0, base /api/v1)
+
+autonumber
+skinparam shadowing false
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 260
+
+actor "Cliente\n(Browser)" as C
+participant "Frontend\n(React SPA)" as F
+participant "Backend API\n(FastAPI)" as API
+database "Base de datos\n(PostgreSQL)" as DB
+
+== Inicio de sesión: POST /sesiones (RF-26-AC-1, AC-2, AC-3) ==
+
+C -> F : Captura correo y contraseña
+F -> API : POST /api/v1/sesiones\n{correo, contrasena}
+API -> DB : SELECT intentos_fallidos, bloqueado_hasta\nFROM intentos_login WHERE correo = :correo
+DB --> API : contador del correo
+
+alt bloqueado_hasta > now()
+  API --> F : 429 Error {codigo: "cuenta_bloqueada",\nmensaje: "Cuenta bloqueada temporalmente; intente de nuevo en 15 minutos"}\nRetry-After: <segundos restantes>
+  F --> C : Muestra el aviso de bloqueo
+else
+  API -> DB : SELECT id, hash_contrasena, estado, rol\nFROM usuarios WHERE correo = :correo
+  DB --> API : usuario (o ninguno)
+
+  alt correo inexistente, contraseña incorrecta o cuenta no "activa"
+    API -> DB : UPDATE intentos_login SET intentos_fallidos = intentos_fallidos + 1\n(al llegar a 5: bloqueado_hasta = now() + 15 min)
+    note right of API
+      El contador corre también para correos
+      que no existen, para no revelar qué
+      cuentas están registradas.
+    end note
+    API --> F : 401 Error {codigo: "credenciales_invalidas",\nmensaje: "Correo o contraseña incorrectos"}
+    F --> C : Muestra el error, sin token
+  else credenciales válidas y cuenta activa
+    API -> DB : UPDATE intentos_login SET intentos_fallidos = 0
+    API -> DB : INSERT INTO sesiones (id, usuario_id, creada, ultimo_acceso)\nVALUES (:sid, :usuario_id, now(), now())
+    DB --> API : sesión creada
+    API -> API : Firma JWT con claims {sub: usuario_id, sid}
+    API --> F : 201 Created\nLocation: /api/v1/sesiones/actual\nSesionCreada {token, expiraPorInactividadMin: 60, usuario}
+    F -> F : Guarda el token en memoria
+    F --> C : Redirige al tablero de su rol
+  end
+end
+
+== Solicitud autenticada: GET /sesiones/actual (RF-26-AC-6) ==
+
+note over F, DB
+  Toda operación protegida del contrato (bearerAuth) pasa por esta misma
+  validación. GET /sesiones/actual la muestra sola. Cuenta como actividad,
+  así que la SPA no la usa para sondear la sesión.
+end note
+
+C -> F : Recarga la aplicación
+F -> API : GET /api/v1/sesiones/actual\nAuthorization: Bearer <JWT>
+API -> API : Verifica firma del JWT y extrae sid
+API -> DB : SELECT usuario_id, ultimo_acceso, revocada_en\nFROM sesiones WHERE id = :sid
+DB --> API : sesión
+
+alt sesión revocada, inexistente o ultimo_acceso < now() - 60 min
+  API --> F : 401 Error {codigo: "sesion_invalida"}
+  F --> C : Envía a la pantalla de inicio de sesión
+else sesión vigente
+  API -> DB : UPDATE sesiones SET ultimo_acceso = now() WHERE id = :sid
+  API -> DB : SELECT rol, parque_id, estado FROM usuarios WHERE id = :sub
+  note right of API
+    Rol, parques y estado se leen de la base,
+    nunca de los claims: una baja (RF-29) o una
+    reasignación (RF-10) retiran el acceso en la
+    siguiente solicitud.
+  end note
+  DB --> API : usuario vigente
+  API --> F : 200 OK {sesion, usuario}
+  F --> C : Muestra la aplicación
+end
+
+== Cierre de sesión: DELETE /sesiones/actual (RF-26-AC-5) ==
+
+C -> F : Clic en "Cerrar sesión"
+F -> API : DELETE /api/v1/sesiones/actual\nAuthorization: Bearer <JWT>
+API -> DB : UPDATE sesiones SET revocada_en = now() WHERE id = :sid
+DB --> API : ok
+API --> F : 204 No Content
+F -> F : Descarta el token
+F --> C : Pantalla de inicio de sesión
+
+C -> F : (más tarde) intenta reutilizar el token anterior
+F -> API : GET /api/v1/sesiones/actual\nAuthorization: Bearer <JWT revocado>
+API -> DB : SELECT ... FROM sesiones WHERE id = :sid
+DB --> API : revocada_en no es nulo
+API --> F : 401 Error {codigo: "sesion_invalida"}
+
+@enduml

@@ -1,0 +1,2543 @@
+openapi: 3.0.3
+info:
+  title: SGPIS API
+  version: 0.1.0
+  description: |
+    API del Sistema de Gestión del Programa Parque Industrial Seguro (AMPIP).
+    Primera pasada generada a partir de SRS_equipo.md v2.0 y de las tareas del Sprint 1.
+    Las rutas que el SRS o las tareas ya nombran se respetan tal cual.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Desarrollo local
+security:
+  - bearerAuth: []
+tags:
+  - name: Autenticación
+  - name: Usuarios
+  - name: Desarrolladores
+  - name: Generaciones
+  - name: Catálogo
+  - name: Parques
+  - name: Criterios del parque
+  - name: Autoevaluaciones
+  - name: Plan de trabajo
+  - name: Evidencias
+  - name: Análisis de riesgos
+  - name: Fases
+  - name: Opiniones
+  - name: Evaluaciones de desempeño
+  - name: Comité
+  - name: Dictámenes
+  - name: Reportes
+  - name: Bitácora
+  - name: Configuración
+  - name: Sistema
+
+paths:
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Estado del servicio
+      operationId: obtenerSalud
+      security: []
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Servicio arriba
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Salud' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión
+      operationId: login
+      security: []
+      x-acceptance-criteria: [RF-26-AC-1, RF-26-AC-2, RF-26-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credenciales' }
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionCreada' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '423': { $ref: '#/components/responses/CuentaBloqueada' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar sesión
+      operationId: logout
+      x-acceptance-criteria: [RF-26-AC-5]
+      responses:
+        '204': { description: Sesión cerrada }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/yo:
+    get:
+      tags: [Autenticación]
+      summary: Usuario de la sesión actual
+      operationId: obtenerUsuarioActual
+      x-acceptance-criteria: [RF-26-AC-6]
+      responses:
+        '200':
+          description: Usuario autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/recuperacion:
+    post:
+      tags: [Autenticación]
+      summary: Solicitar recuperación de contraseña
+      operationId: solicitarRecuperacion
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SolicitudRecuperacion' }
+      responses:
+        '202': { description: Solicitud recibida }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/restablecimiento:
+    post:
+      tags: [Autenticación]
+      summary: Restablecer contraseña con token
+      operationId: restablecerContrasena
+      security: []
+      x-acceptance-criteria: [RF-26-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Restablecimiento' }
+      responses:
+        '204': { description: Contraseña restablecida }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /auth/activacion:
+    post:
+      tags: [Autenticación]
+      summary: Activar cuenta desde la invitación
+      operationId: activarCuenta
+      security: []
+      x-acceptance-criteria: [RF-03-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Activacion' }
+      responses:
+        '204': { description: Cuenta activada }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /usuarios:
+    get:
+      tags: [Usuarios]
+      summary: Listar usuarios
+      operationId: listarUsuarios
+      x-acceptance-criteria: []
+      parameters:
+        - { name: rol, in: query, schema: { $ref: '#/components/schemas/Rol' } }
+        - { name: parque_id, in: query, schema: { type: string, format: uuid } }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/EstadoUsuario' } }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/PorPagina'
+      responses:
+        '200':
+          description: Página de usuarios
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaUsuarios' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Usuarios]
+      summary: Dar de alta usuario
+      operationId: crearUsuario
+      x-acceptance-criteria: [RF-03-AC-1, RF-03-AC-2, RF-03-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioCrear' }
+      responses:
+        '201':
+          description: Usuario creado en estado pendiente_activacion
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /usuarios/{usuario_id}:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioId'
+    get:
+      tags: [Usuarios]
+      summary: Consultar usuario
+      operationId: obtenerUsuario
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    patch:
+      tags: [Usuarios]
+      summary: Modificar usuario
+      operationId: actualizarUsuario
+      x-acceptance-criteria: [RF-03-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioActualizar' }
+      responses:
+        '200':
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /usuarios/{usuario_id}/baja:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioId'
+    post:
+      tags: [Usuarios]
+      summary: Dar de baja usuario
+      operationId: darDeBajaUsuario
+      x-acceptance-criteria: [RF-29-AC-1, RF-29-AC-2]
+      responses:
+        '200':
+          description: Usuario desactivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /desarrolladores:
+    get:
+      tags: [Desarrolladores]
+      summary: Listar desarrolladores
+      operationId: listarDesarrolladores
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Desarrolladores
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Desarrollador' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Desarrolladores]
+      summary: Registrar desarrollador
+      operationId: crearDesarrollador
+      x-acceptance-criteria: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DesarrolladorCrear' }
+      responses:
+        '201':
+          description: Desarrollador creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Desarrollador' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /generaciones:
+    get:
+      tags: [Generaciones]
+      summary: Listar generaciones
+      operationId: listarGeneraciones
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Generaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Generacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Generaciones]
+      summary: Crear generación
+      operationId: crearGeneracion
+      x-acceptance-criteria: [RF-28-AC-1, RF-28-AC-2, RF-01-AC-5]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GeneracionCrear' }
+      responses:
+        '201':
+          description: Generación creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Generacion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /generaciones/{generacion_id}:
+    parameters:
+      - $ref: '#/components/parameters/GeneracionId'
+    get:
+      tags: [Generaciones]
+      summary: Consultar generación
+      operationId: obtenerGeneracion
+      x-acceptance-criteria: [RF-28-AC-1]
+      responses:
+        '200':
+          description: Generación
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Generacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /catalogo/versiones:
+    get:
+      tags: [Catálogo]
+      summary: Listar versiones del catálogo
+      operationId: listarVersionesCatalogo
+      x-acceptance-criteria: [RF-01-AC-5]
+      responses:
+        '200':
+          description: Versiones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/VersionCatalogo' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Catálogo]
+      summary: Cargar nueva versión del catálogo (CSV)
+      operationId: cargarVersionCatalogo
+      x-acceptance-criteria: [RF-01-AC-1, RF-01-AC-2, RF-01-AC-4]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/CargaCatalogo' }
+      responses:
+        '201':
+          description: Versión creada y marcada vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VersionCatalogo' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '409': { $ref: '#/components/responses/Conflicto' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /catalogo/versiones/{version_id}:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Catálogo]
+      summary: Consultar versión del catálogo
+      operationId: obtenerVersionCatalogo
+      x-acceptance-criteria: [RF-01-AC-5]
+      responses:
+        '200':
+          description: Versión
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VersionCatalogo' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /catalogo/versiones/{version_id}/criterios:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Catálogo]
+      summary: Listar criterios de una versión
+      operationId: listarCriteriosVersion
+      x-acceptance-criteria: []
+      parameters:
+        - { name: estandar, in: query, schema: { type: integer, minimum: 1, maximum: 10 } }
+      responses:
+        '200':
+          description: Criterios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/CriterioCatalogo' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /catalogo/exportar:
+    get:
+      tags: [Catálogo]
+      summary: Exportar archivo maestro del catálogo vigente
+      operationId: exportarCatalogo
+      x-acceptance-criteria: [RF-25-AC-2, RF-25-AC-3, RF-25-AC-4]
+      responses:
+        '200':
+          description: CSV con los 286 criterios y sus cuatro marcas
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /catalogo/criterios/{criterio_id}/evidencia-suficiente:
+    parameters:
+      - $ref: '#/components/parameters/CriterioId'
+    put:
+      tags: [Catálogo]
+      summary: Definir evidencia suficiente de un criterio
+      operationId: definirEvidenciaSuficiente
+      x-acceptance-criteria: [RF-24-AC-1, RF-24-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EvidenciaSuficienteGuardar' }
+      responses:
+        '200':
+          description: Descripción guardada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidenciaSuficiente' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques:
+    get:
+      tags: [Parques]
+      summary: Listar parques visibles para el usuario
+      operationId: listarParques
+      x-acceptance-criteria: [RF-23-AC-1, RF-29-AC-3, RF-30-AC-2]
+      parameters:
+        - { name: generacion_id, in: query, schema: { type: string, format: uuid } }
+        - { name: region, in: query, schema: { $ref: '#/components/schemas/Region' } }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/EstadoParque' } }
+        - { name: atrasado, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/PorPagina'
+      responses:
+        '200':
+          description: Página de parques
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaParques' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Parques]
+      summary: Dar de alta parque (activo o histórico)
+      operationId: crearParque
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-3, RF-28-AC-3, RF-31-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParqueCrear' }
+      responses:
+        '201':
+          description: Parque creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parque' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Parques]
+      summary: Consultar expediente del parque
+      operationId: obtenerParque
+      x-acceptance-criteria: [RF-01-AC-3, RF-30-AC-1, RF-13-AC-1, RF-13-AC-3, RF-35-AC-2, RF-34-AC-3]
+      responses:
+        '200':
+          description: Expediente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parque' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    patch:
+      tags: [Parques]
+      summary: Modificar datos del parque y fechas del programa
+      operationId: actualizarParque
+      x-acceptance-criteria: [RF-30-AC-1, RF-01-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParqueActualizar' }
+      responses:
+        '200':
+          description: Parque actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parque' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/baja:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    post:
+      tags: [Parques]
+      summary: Dar de baja parque
+      operationId: darDeBajaParque
+      x-acceptance-criteria: [RF-29-AC-3]
+      responses:
+        '200':
+          description: Parque desactivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parque' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/tipo-pi:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    put:
+      tags: [Parques]
+      summary: Cambiar tipo de PI y recalcular criterios
+      operationId: cambiarTipoPI
+      x-acceptance-criteria: [RF-11-AC-1, RF-11-AC-3, RF-11-AC-4, RF-11-AC-5, RF-11-AC-6]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CambioTipoPICrear' }
+      responses:
+        '200':
+          description: Tipo cambiado; devuelve el nuevo registro de historial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CambioTipoPI' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/cumplimiento:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Parques]
+      summary: Cifras de cumplimiento
+      operationId: obtenerCumplimiento
+      x-acceptance-criteria: [RF-08-AC-1, RF-08-AC-2, RF-08-AC-3, RF-08-AC-4, RF-08-AC-5, RF-11-AC-2, RF-11-AC-6, RF-27-AC-6]
+      responses:
+        '200':
+          description: Cifras
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cumplimiento' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/historial:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Parques]
+      summary: Historial del parque en el programa
+      operationId: obtenerHistorialParque
+      x-acceptance-criteria: [RF-31-AC-1, RF-31-AC-3]
+      responses:
+        '200':
+          description: Historial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistorialParque' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/actualizaciones-anuales:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    post:
+      tags: [Parques]
+      summary: Registrar actualización anual del programa
+      operationId: registrarActualizacionAnual
+      x-acceptance-criteria: [RF-30-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualizacionAnualCrear' }
+      responses:
+        '201':
+          description: Actualización registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActualizacionAnual' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/usuarios:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Parques]
+      summary: Usuarios APPI del parque
+      operationId: listarUsuariosParque
+      x-acceptance-criteria: [RF-34-AC-1]
+      responses:
+        '200':
+          description: Usuarios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/UsuarioDeParque' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/contacto-principal:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    put:
+      tags: [Parques]
+      summary: Designar contacto principal
+      operationId: designarContactoPrincipal
+      x-acceptance-criteria: [RF-34-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactoPrincipalGuardar' }
+      responses:
+        '200':
+          description: Contacto principal designado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsuarioResumen' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/asignaciones-consultor:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Parques]
+      summary: Historial de consultores asignados
+      operationId: listarAsignacionesConsultor
+      x-acceptance-criteria: [RF-10-AC-2]
+      responses:
+        '200':
+          description: Asignaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/AsignacionConsultor' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Parques]
+      summary: Asignar o reasignar consultor
+      operationId: asignarConsultor
+      x-acceptance-criteria: [RF-10-AC-1, RF-10-AC-2, RF-10-AC-3, RF-03-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AsignacionConsultorCrear' }
+      responses:
+        '201':
+          description: Asignación creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsignacionConsultor' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/fases:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Fases]
+      summary: Fases del expediente
+      operationId: listarFases
+      x-acceptance-criteria: [RF-32-AC-1, RF-32-AC-2]
+      responses:
+        '200':
+          description: Fases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Fase' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/fases/{fase}/cierre:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/FaseClave'
+    post:
+      tags: [Fases]
+      summary: Cerrar fase
+      operationId: cerrarFase
+      x-acceptance-criteria: [RF-32-AC-3]
+      responses:
+        '200':
+          description: Fase cerrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fase' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/fases/{fase}/avance-excepcion:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/FaseClave'
+    post:
+      tags: [Fases]
+      summary: Avanzar a la fase siguiente sin cerrar la actual
+      operationId: avanzarFasePorExcepcion
+      x-acceptance-criteria: [RF-32-AC-4, RF-32-AC-5]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                motivo: { type: string }
+      responses:
+        '200':
+          description: Avance registrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fase' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/criterios:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Criterios del parque]
+      summary: Criterios aplicables al parque con su estado
+      operationId: listarCriteriosParque
+      x-acceptance-criteria: [RF-04-AC-1, RF-07-AC-1, RF-25-AC-1, RF-25-AC-4, RF-11-AC-1, RF-11-AC-4, RF-09-AC-2]
+      parameters:
+        - { name: estandar, in: query, schema: { type: integer, minimum: 1, maximum: 10 } }
+        - { name: marca, in: query, schema: { type: string, enum: [O, R] } }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/EstadoCalificacion' } }
+      responses:
+        '200':
+          description: Criterios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/CriterioParque' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/criterios/{criterio_id}:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/CriterioId'
+    get:
+      tags: [Criterios del parque]
+      summary: Detalle de un criterio del parque
+      operationId: obtenerCriterioParque
+      x-acceptance-criteria: [RF-24-AC-1, RF-25-AC-1, RF-36-AC-2]
+      responses:
+        '200':
+          description: Criterio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CriterioParqueDetalle' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    patch:
+      tags: [Criterios del parque]
+      summary: Calificar criterio
+      operationId: calificarCriterio
+      x-acceptance-criteria: [RF-27-AC-2, RF-27-AC-3, RF-27-AC-5, RF-27-AC-6, RF-17-AC-1, RF-17-AC-2, RF-16-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                estado_calificacion:
+                  type: string
+                  enum: [cumplido, no_cumplido]
+      responses:
+        '200':
+          description: Criterio calificado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CriterioParque' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/criterios/{criterio_id}/reabrir:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/CriterioId'
+    post:
+      tags: [Criterios del parque]
+      summary: Reabrir criterio calificado
+      operationId: reabrirCriterio
+      x-acceptance-criteria: [RF-27-AC-8, RF-27-AC-5]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                motivo: { type: string }
+      responses:
+        '200':
+          description: Criterio en revisión
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CriterioParque' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/criterios/{criterio_id}/recomendaciones:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+      - $ref: '#/components/parameters/CriterioId'
+    get:
+      tags: [Criterios del parque]
+      summary: Recomendaciones del consultor sobre el criterio
+      operationId: listarRecomendaciones
+      x-acceptance-criteria: [RF-36-AC-1]
+      responses:
+        '200':
+          description: Recomendaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Recomendacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Criterios del parque]
+      summary: Registrar recomendación
+      operationId: crearRecomendacion
+      x-acceptance-criteria: [RF-36-AC-1, RF-36-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecomendacionCrear' }
+      responses:
+        '201':
+          description: Recomendación registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recomendacion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /autoevaluaciones:
+    post:
+      tags: [Autoevaluaciones]
+      summary: Registrar respuesta de autoevaluación
+      operationId: crearAutoevaluacion
+      x-acceptance-criteria: [RF-04-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parque_id, criterio_id, respuesta]
+              properties:
+                parque_id: { type: string, format: uuid }
+                criterio_id: { type: string, format: uuid }
+                respuesta: { $ref: '#/components/schemas/RespuestaAutoevaluacion' }
+                comentario: { type: string, maxLength: 2000 }
+      responses:
+        '201':
+          description: Respuesta registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Autoevaluacion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/autoevaluaciones:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Autoevaluaciones]
+      summary: Respuestas de autoevaluación del parque
+      operationId: listarAutoevaluaciones
+      x-acceptance-criteria: [RF-04-AC-1]
+      responses:
+        '200':
+          description: Respuestas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Autoevaluacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/plan-trabajo:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Plan de trabajo]
+      summary: Plan de trabajo del parque
+      operationId: obtenerPlanTrabajo
+      x-acceptance-criteria: [RF-09-AC-2, RF-09-AC-3]
+      parameters:
+        - { name: atrasado, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Compromisos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Compromiso' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Plan de trabajo]
+      summary: Agregar criterio al plan de trabajo
+      operationId: agregarCompromiso
+      x-acceptance-criteria: [RF-09-AC-1, RF-09-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [criterio_id, responsable_id, fecha_comprometida]
+              properties:
+                criterio_id: { type: string, format: uuid }
+                responsable_id: { type: string, format: uuid }
+                fecha_comprometida: { type: string, format: date }
+      responses:
+        '201':
+          description: Compromiso creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Compromiso' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/evidencias:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Evidencias]
+      summary: Listar evidencias del parque
+      operationId: listarEvidencias
+      x-acceptance-criteria: [RF-05-AC-7]
+      parameters:
+        - { name: criterio_id, in: query, schema: { type: string, format: uuid } }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/EstadoEvidencia' } }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/PorPagina'
+      responses:
+        '200':
+          description: Página de evidencias
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaEvidencias' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Evidencias]
+      summary: Subir una o varias evidencias
+      operationId: subirEvidencias
+      x-acceptance-criteria: [RF-05-AC-1, RF-05-AC-5, RF-05-AC-7, RF-05-AC-8, RF-06-AC-1, RF-06-AC-2, RF-06-AC-3, RF-06-AC-4, RF-06-AC-5, RF-06-AC-6, RF-27-AC-4, RF-27-AC-7, RF-17-AC-3, RF-23-AC-2]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/CargaEvidencias' }
+      responses:
+        '201':
+          description: Al menos una evidencia creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultadoCargaEvidencias' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /evidencias/{evidencia_id}:
+    parameters:
+      - $ref: '#/components/parameters/EvidenciaId'
+    get:
+      tags: [Evidencias]
+      summary: Consultar evidencia con su historial de versiones
+      operationId: obtenerEvidencia
+      x-acceptance-criteria: [RF-05-AC-6, RF-05-AC-9]
+      responses:
+        '200':
+          description: Evidencia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Evidencia' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    delete:
+      tags: [Evidencias]
+      summary: Eliminar evidencia enviada por error
+      operationId: eliminarEvidencia
+      x-acceptance-criteria: [RF-05-AC-9, RF-05-AC-10]
+      responses:
+        '204': { description: Evidencia eliminada }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /evidencias/{evidencia_id}/aceptar:
+    parameters:
+      - $ref: '#/components/parameters/EvidenciaId'
+    post:
+      tags: [Evidencias]
+      summary: Aceptar evidencia
+      operationId: aceptarEvidencia
+      x-acceptance-criteria: [RF-27-AC-1, RF-27-AC-5, RF-05-AC-7]
+      responses:
+        '200':
+          description: Evidencia aceptada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Evidencia' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /evidencias/{evidencia_id}/versiones:
+    parameters:
+      - $ref: '#/components/parameters/EvidenciaId'
+    post:
+      tags: [Evidencias]
+      summary: Subir nueva versión de una evidencia
+      operationId: subirVersionEvidencia
+      x-acceptance-criteria: [RF-05-AC-4, RF-27-AC-7]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo: { type: string, format: binary }
+      responses:
+        '201':
+          description: Versión creada; evidencia vuelve a enviada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Evidencia' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /evidencias/{evidencia_id}/observaciones:
+    parameters:
+      - $ref: '#/components/parameters/EvidenciaId'
+    get:
+      tags: [Evidencias]
+      summary: Observaciones de la evidencia
+      operationId: listarObservaciones
+      x-acceptance-criteria: [RF-05-AC-6, RF-36-AC-2]
+      responses:
+        '200':
+          description: Observaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Observacion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Evidencias]
+      summary: Registrar observación
+      operationId: crearObservacion
+      x-acceptance-criteria: [RF-05-AC-2, RF-05-AC-3, RF-23-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObservacionCrear' }
+      responses:
+        '201':
+          description: Observación creada; evidencia en observada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Observacion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /evidencias/{evidencia_id}/contenido:
+    parameters:
+      - $ref: '#/components/parameters/EvidenciaId'
+    get:
+      tags: [Evidencias]
+      summary: Obtener URL firmada para abrir el archivo
+      operationId: obtenerContenidoEvidencia
+      x-acceptance-criteria: [RF-07-AC-2, RF-07-AC-3, RF-35-AC-1]
+      responses:
+        '200':
+          description: URL firmada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnlaceDescarga' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/revisiones-analisis-riesgos:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Análisis de riesgos]
+      summary: Revisiones del análisis de riesgos
+      operationId: listarRevisionesAnalisis
+      x-acceptance-criteria: [RF-16-AC-1, RF-13-AC-1]
+      responses:
+        '200':
+          description: Revisiones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/RevisionAnalisisRiesgos' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Análisis de riesgos]
+      summary: Registrar revisión del análisis de riesgos
+      operationId: crearRevisionAnalisis
+      x-acceptance-criteria: [RF-16-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RevisionAnalisisRiesgosCrear' }
+      responses:
+        '201':
+          description: Revisión registrada y vigente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RevisionAnalisisRiesgos' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /revisiones-analisis-riesgos/{revision_id}/documento:
+    parameters:
+      - $ref: '#/components/parameters/RevisionId'
+    get:
+      tags: [Análisis de riesgos]
+      summary: URL firmada del documento del análisis
+      operationId: obtenerDocumentoAnalisis
+      x-acceptance-criteria: [RF-16-AC-2, RF-16-AC-3]
+      responses:
+        '200':
+          description: URL firmada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnlaceDescarga' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    put:
+      tags: [Análisis de riesgos]
+      summary: Subir o reemplazar el documento del análisis
+      operationId: subirDocumentoAnalisis
+      x-acceptance-criteria: [RF-16-AC-2]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo: { type: string, format: binary }
+      responses:
+        '200':
+          description: Documento guardado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RevisionAnalisisRiesgos' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    delete:
+      tags: [Análisis de riesgos]
+      summary: Eliminar el documento del análisis
+      operationId: eliminarDocumentoAnalisis
+      x-acceptance-criteria: []
+      responses:
+        '204': { description: Documento eliminado }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/opiniones:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Opiniones]
+      summary: Opiniones de Cumplimiento del parque
+      operationId: listarOpiniones
+      x-acceptance-criteria: [RF-12-AC-6]
+      responses:
+        '200':
+          description: Opiniones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Opinion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Opiniones]
+      summary: Emitir Opinión de Cumplimiento
+      operationId: emitirOpinion
+      x-acceptance-criteria: [RF-12-AC-1, RF-12-AC-2, RF-12-AC-3, RF-12-AC-4, RF-12-AC-5, RF-12-AC-6]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpinionCrear' }
+      responses:
+        '201':
+          description: Opinión emitida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Opinion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/evaluaciones-desempeno:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Evaluaciones de desempeño]
+      summary: Evaluaciones de Desempeño del parque
+      operationId: listarEvaluacionesDesempeno
+      x-acceptance-criteria: [RF-33-AC-1]
+      responses:
+        '200':
+          description: Evaluaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/EvaluacionDesempeno' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Evaluaciones de desempeño]
+      summary: Registrar Evaluación de Desempeño
+      operationId: registrarEvaluacionDesempeno
+      x-acceptance-criteria: [RF-33-AC-1, RF-33-AC-2, RF-33-AC-3]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/EvaluacionDesempenoCrear' }
+      responses:
+        '201':
+          description: Evaluación registrada con folio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvaluacionDesempeno' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/sesiones-comite:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    post:
+      tags: [Comité]
+      summary: Abrir sesión de comité
+      operationId: abrirSesionComite
+      x-acceptance-criteria: [RF-13-AC-1, RF-13-AC-2, RF-15-AC-1, RF-15-AC-2, RF-15-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SesionComiteCrear' }
+      responses:
+        '201':
+          description: Sesión abierta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionComite' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /sesiones-comite/{sesion_id}:
+    parameters:
+      - $ref: '#/components/parameters/SesionComiteId'
+    get:
+      tags: [Comité]
+      summary: Consultar sesión de comité
+      operationId: obtenerSesionComite
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Sesión
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionComite' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    patch:
+      tags: [Comité]
+      summary: Cerrar sesión de comité
+      operationId: cerrarSesionComite
+      x-acceptance-criteria: [RF-13-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SesionComiteActualizar' }
+      responses:
+        '200':
+          description: Sesión cerrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SesionComite' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /parques/{parque_id}/dictamenes:
+    parameters:
+      - $ref: '#/components/parameters/ParqueId'
+    get:
+      tags: [Dictámenes]
+      summary: Dictámenes del parque
+      operationId: listarDictamenes
+      x-acceptance-criteria: [RF-14-AC-6]
+      responses:
+        '200':
+          description: Dictámenes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datos:
+                    type: array
+                    items: { $ref: '#/components/schemas/Dictamen' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    post:
+      tags: [Dictámenes]
+      summary: Capturar dictamen en borrador
+      operationId: capturarDictamen
+      x-acceptance-criteria: [RF-14-AC-2, RF-14-AC-3, RF-14-AC-4, RF-14-AC-5, RF-14-AC-6, RF-14-AC-8]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DictamenCrear' }
+      responses:
+        '201':
+          description: Dictamen en borrador
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dictamen' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /dictamenes/{dictamen_id}/firmar:
+    parameters:
+      - $ref: '#/components/parameters/DictamenId'
+    patch:
+      tags: [Dictámenes]
+      summary: Firmar dictamen
+      operationId: firmarDictamen
+      x-acceptance-criteria: [RF-14-AC-1, RF-14-AC-7]
+      responses:
+        '200':
+          description: Dictamen firmado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dictamen' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /reportes/mensual:
+    get:
+      tags: [Reportes]
+      summary: Reporte mensual para Dirección
+      operationId: generarReporteMensual
+      x-acceptance-criteria: [RF-21-AC-1, RF-21-AC-2]
+      parameters:
+        - { name: generacion_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: mes, in: query, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}$' } }
+      responses:
+        '200':
+          description: Reporte
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReporteMensual' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /bitacora:
+    get:
+      tags: [Bitácora]
+      summary: Consultar bitácora
+      operationId: consultarBitacora
+      x-acceptance-criteria: [RF-35-AC-3, RF-35-AC-4]
+      parameters:
+        - { name: parque_id, in: query, schema: { type: string, format: uuid } }
+        - { name: usuario_id, in: query, schema: { type: string, format: uuid } }
+        - { name: accion, in: query, schema: { type: string } }
+        - { name: desde, in: query, schema: { type: string, format: date } }
+        - { name: hasta, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/PorPagina'
+      responses:
+        '200':
+          description: Página de eventos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaginaEventosBitacora' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+  /configuracion:
+    get:
+      tags: [Configuración]
+      summary: Parámetros del programa
+      operationId: obtenerConfiguracion
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Configuración
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Configuracion' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+    put:
+      tags: [Configuración]
+      summary: Cambiar parámetros
+      operationId: cambiarConfiguracion
+      x-acceptance-criteria: [RF-06-AC-6, RF-06-AC-7]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limite_tamano_archivo_mb: { type: integer }
+                vigencia_distintivo_anios: { type: integer }
+      responses:
+        '200':
+          description: Configuración guardada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Configuracion' }
+        '400': { $ref: '#/components/responses/SolicitudInvalida' }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '422': { $ref: '#/components/responses/ReglaIncumplida' }
+        '500': { $ref: '#/components/responses/ErrorInterno' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UsuarioId: { name: usuario_id, in: path, required: true, schema: { type: string, format: uuid } }
+    GeneracionId: { name: generacion_id, in: path, required: true, schema: { type: string, format: uuid } }
+    VersionId: { name: version_id, in: path, required: true, schema: { type: string, format: uuid } }
+    CriterioId: { name: criterio_id, in: path, required: true, schema: { type: string, format: uuid } }
+    ParqueId: { name: parque_id, in: path, required: true, schema: { type: string, format: uuid } }
+    EvidenciaId: { name: evidencia_id, in: path, required: true, schema: { type: string, format: uuid } }
+    RevisionId: { name: revision_id, in: path, required: true, schema: { type: string, format: uuid } }
+    SesionComiteId: { name: sesion_id, in: path, required: true, schema: { type: string, format: uuid } }
+    DictamenId: { name: dictamen_id, in: path, required: true, schema: { type: string, format: uuid } }
+    FaseClave: { name: fase, in: path, required: true, schema: { type: string } }
+    Pagina: { name: pagina, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PorPagina: { name: por_pagina, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+
+  responses:
+    SolicitudInvalida:
+      description: Solicitud mal formada
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoAutenticado:
+      description: Sin sesión válida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    SinPermiso:
+      description: Sin permiso
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoEncontrado:
+      description: No existe
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflicto:
+      description: Duplicado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ReglaIncumplida:
+      description: Regla de negocio incumplida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    CuentaBloqueada:
+      description: Cuenta bloqueada temporalmente
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ErrorInterno:
+      description: Error no controlado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [mensaje]
+      properties:
+        mensaje: { type: string }
+        detalles:
+          type: array
+          items:
+            type: object
+            properties:
+              campo: { type: string }
+              fila: { type: integer }
+              columna: { type: string }
+              mensaje: { type: string }
+
+    Paginacion:
+      type: object
+      properties:
+        pagina: { type: integer }
+        por_pagina: { type: integer }
+        total: { type: integer }
+
+    Salud:
+      type: object
+      properties:
+        estado: { type: string, enum: [ok, degradado] }
+        version: { type: string }
+        base_datos: { type: string, enum: [ok, sin_conexion] }
+
+    Rol:
+      type: string
+      enum: [coordinacion_ampip, director_general, appi, consultor, gerente_corporativo, administrador_tecnico]
+
+    EstadoUsuario:
+      type: string
+      enum: [pendiente_activacion, activo, inactivo]
+
+    TipoPI:
+      type: string
+      enum: [construccion_abierto, construccion_cerrado, operacion_abierto, operacion_cerrado]
+
+    Region:
+      type: string
+      enum: [Aguascalientes, Baja California, Baja California Sur, Campeche, Chiapas, Chihuahua, Ciudad de México, Coahuila, Colima, Durango, Estado de México, Guanajuato, Guerrero, Hidalgo, Jalisco, Michoacán, Morelos, Nayarit, Nuevo León, Oaxaca, Puebla, Querétaro, Quintana Roo, San Luis Potosí, Sinaloa, Sonora, Tabasco, Tamaulipas, Tlaxcala, Veracruz, Yucatán, Zacatecas]
+
+    Marca:
+      type: string
+      enum: [O, R, NA]
+
+    EstadoCalificacion:
+      type: string
+      enum: [pendiente, en_revision, cumplido, no_cumplido]
+
+    EstadoEvidencia:
+      type: string
+      enum: [enviada, observada, aceptada, eliminada]
+
+    EstadoParque:
+      type: string
+      enum: [activo, inactivo, historico]
+
+    RespuestaAutoevaluacion:
+      type: string
+      enum: [cumple, cumple_parcialmente, no_cumple]
+
+    Credenciales:
+      type: object
+      required: [correo, contrasena]
+      properties:
+        correo: { type: string, format: email }
+        contrasena: { type: string, format: password }
+
+    SesionCreada:
+      type: object
+      properties:
+        token: { type: string }
+        tipo_token: { type: string, enum: [Bearer] }
+        expira_por_inactividad_min: { type: integer, example: 60 }
+        usuario: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    SolicitudRecuperacion:
+      type: object
+      required: [correo]
+      properties:
+        correo: { type: string, format: email }
+
+    Restablecimiento:
+      type: object
+      required: [token, contrasena_nueva]
+      properties:
+        token: { type: string }
+        contrasena_nueva: { type: string, format: password, minLength: 12 }
+
+    Activacion:
+      type: object
+      required: [token, contrasena]
+      properties:
+        token: { type: string }
+        contrasena: { type: string, format: password, minLength: 12 }
+
+    RolAsignado:
+      type: object
+      required: [rol]
+      properties:
+        rol: { $ref: '#/components/schemas/Rol' }
+        parque_id: { type: string, format: uuid, nullable: true }
+        desarrollador_id: { type: string, format: uuid, nullable: true }
+
+    UsuarioResumen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        correo: { type: string, format: email }
+
+    Usuario:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        correo: { type: string, format: email }
+        estado: { $ref: '#/components/schemas/EstadoUsuario' }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RolAsignado' }
+        creado_en: { type: string, format: date-time }
+
+    UsuarioCrear:
+      type: object
+      required: [nombre, correo, roles]
+      properties:
+        nombre: { type: string }
+        correo: { type: string, format: email }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RolAsignado' }
+
+    UsuarioActualizar:
+      type: object
+      properties:
+        nombre: { type: string }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RolAsignado' }
+
+    UsuarioDeParque:
+      allOf:
+        - $ref: '#/components/schemas/UsuarioResumen'
+        - type: object
+          properties:
+            estado: { $ref: '#/components/schemas/EstadoUsuario' }
+            es_contacto_principal: { type: boolean }
+
+    PaginaUsuarios:
+      type: object
+      properties:
+        datos:
+          type: array
+          items: { $ref: '#/components/schemas/Usuario' }
+        paginacion: { $ref: '#/components/schemas/Paginacion' }
+
+    Desarrollador:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+
+    DesarrolladorCrear:
+      type: object
+      required: [nombre]
+      properties:
+        nombre: { type: string }
+
+    Generacion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string, example: '2027' }
+        fecha_inicio: { type: string, format: date }
+        version_catalogo_id: { type: string, format: uuid }
+        creada_en: { type: string, format: date-time }
+
+    GeneracionCrear:
+      type: object
+      required: [nombre, fecha_inicio, version_catalogo_id]
+      properties:
+        nombre: { type: string }
+        fecha_inicio: { type: string, format: date }
+        version_catalogo_id: { type: string, format: uuid }
+
+    VersionCatalogo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string, example: catalogo-2023-v1 }
+        vigente: { type: boolean }
+        solo_lectura: { type: boolean }
+        total_criterios: { type: integer, example: 286 }
+        cargada_en: { type: string, format: date-time }
+        cargada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    CargaCatalogo:
+      type: object
+      required: [nombre, archivo]
+      properties:
+        nombre: { type: string }
+        archivo: { type: string, format: binary }
+
+    MarcasPorTipo:
+      type: object
+      properties:
+        construccion_abierto: { $ref: '#/components/schemas/Marca' }
+        construccion_cerrado: { $ref: '#/components/schemas/Marca' }
+        operacion_abierto: { $ref: '#/components/schemas/Marca' }
+        operacion_cerrado: { $ref: '#/components/schemas/Marca' }
+
+    CriterioCatalogo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clave: { type: string, example: '2.8.1' }
+        estandar: { type: integer }
+        subestandar: { type: string }
+        descripcion: { type: string }
+        metodo_verificacion: { type: string }
+        marcas: { $ref: '#/components/schemas/MarcasPorTipo' }
+        evidencia_suficiente: { type: string, nullable: true }
+
+    EvidenciaSuficiente:
+      type: object
+      properties:
+        criterio_id: { type: string, format: uuid }
+        descripcion: { type: string }
+        actualizada_en: { type: string, format: date-time }
+        actualizada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    EvidenciaSuficienteGuardar:
+      type: object
+      required: [descripcion]
+      properties:
+        descripcion: { type: string, maxLength: 4000 }
+
+    Parque:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        desarrollador: { $ref: '#/components/schemas/Desarrollador' }
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        region: { $ref: '#/components/schemas/Region' }
+        generacion_id: { type: string, format: uuid }
+        version_catalogo: { type: string, readOnly: true }
+        estado: { $ref: '#/components/schemas/EstadoParque' }
+        fecha_alta: { type: string, format: date }
+        fecha_termino_programa: { type: string, format: date, nullable: true }
+        fecha_proxima_actualizacion: { type: string, format: date, nullable: true }
+        atrasado: { type: boolean }
+        contacto_principal:
+          allOf: [ { $ref: '#/components/schemas/UsuarioResumen' } ]
+          nullable: true
+        consultor_asignado:
+          allOf: [ { $ref: '#/components/schemas/UsuarioResumen' } ]
+          nullable: true
+        fase_actual: { type: string, nullable: true }
+
+    ParqueResumen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        region: { $ref: '#/components/schemas/Region' }
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        fase_actual: { type: string, nullable: true }
+        atrasado: { type: boolean }
+        cumplimiento_obligatorios: { type: number, nullable: true }
+        avance_general: { type: number, nullable: true }
+
+    PaginaParques:
+      type: object
+      properties:
+        datos:
+          type: array
+          items: { $ref: '#/components/schemas/ParqueResumen' }
+        paginacion: { $ref: '#/components/schemas/Paginacion' }
+
+    ParqueCrear:
+      oneOf:
+        - $ref: '#/components/schemas/ParqueCrearActivo'
+        - $ref: '#/components/schemas/ParqueCrearHistorico'
+      discriminator:
+        propertyName: tipo_registro
+        mapping:
+          activo: '#/components/schemas/ParqueCrearActivo'
+          historico: '#/components/schemas/ParqueCrearHistorico'
+
+    ParqueCrearActivo:
+      type: object
+      required: [tipo_registro, nombre, desarrollador_id, tipo_pi, region, generacion_id]
+      properties:
+        tipo_registro: { type: string, enum: [activo] }
+        nombre: { type: string }
+        desarrollador_id: { type: string, format: uuid }
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        region: { $ref: '#/components/schemas/Region' }
+        generacion_id: { type: string, format: uuid }
+
+    ParqueCrearHistorico:
+      type: object
+      required: [tipo_registro, nombre, region, fecha_ultimo_dictamen, fecha_termino_programa]
+      properties:
+        tipo_registro: { type: string, enum: [historico] }
+        nombre: { type: string }
+        region: { $ref: '#/components/schemas/Region' }
+        fecha_ultimo_dictamen: { type: string, format: date }
+        fecha_termino_programa: { type: string, format: date }
+
+    ParqueActualizar:
+      type: object
+      properties:
+        nombre: { type: string }
+        desarrollador_id: { type: string, format: uuid }
+        region: { $ref: '#/components/schemas/Region' }
+        fecha_termino_programa: { type: string, format: date }
+        fecha_proxima_actualizacion: { type: string, format: date }
+
+    CambioTipoPI:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tipo_pi_anterior: { $ref: '#/components/schemas/TipoPI' }
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        fecha_desde: { type: string, format: date }
+        fecha_hasta: { type: string, format: date, nullable: true }
+        motivo: { type: string }
+        registrado_por: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    CambioTipoPICrear:
+      type: object
+      required: [tipo_pi, motivo, fecha_desde]
+      properties:
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        motivo: { type: string }
+        fecha_desde: { type: string, format: date }
+
+    ActualizacionAnual:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fecha: { type: string, format: date }
+        siguiente_actualizacion: { type: string, format: date }
+        registrada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    ActualizacionAnualCrear:
+      type: object
+      required: [fecha]
+      properties:
+        fecha: { type: string, format: date }
+
+    ContactoPrincipalGuardar:
+      type: object
+      required: [usuario_id]
+      properties:
+        usuario_id: { type: string, format: uuid }
+
+    AsignacionConsultor:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        consultor: { $ref: '#/components/schemas/UsuarioResumen' }
+        generacion_id: { type: string, format: uuid }
+        desde: { type: string, format: date-time }
+        hasta: { type: string, format: date-time, nullable: true }
+        vigente: { type: boolean }
+
+    AsignacionConsultorCrear:
+      type: object
+      required: [consultor_id, generacion_id]
+      properties:
+        consultor_id: { type: string, format: uuid }
+        generacion_id: { type: string, format: uuid }
+
+    Fase:
+      type: object
+      properties:
+        clave: { type: string, example: plan_trabajo }
+        nombre: { type: string, example: Plan de trabajo }
+        orden: { type: integer }
+        estado: { type: string, enum: [pendiente, en_proceso, completada, avanzada_por_excepcion] }
+        actual: { type: boolean }
+        motivo_excepcion: { type: string, nullable: true }
+        cerrada_por:
+          allOf: [ { $ref: '#/components/schemas/UsuarioResumen' } ]
+          nullable: true
+        cerrada_en: { type: string, format: date-time, nullable: true }
+
+    Cifra:
+      type: object
+      properties:
+        aplicables: { type: integer }
+        cumplidos: { type: integer }
+        porcentaje: { type: number, nullable: true }
+        no_aplica: { type: boolean }
+
+    Cumplimiento:
+      type: object
+      properties:
+        parque_id: { type: string, format: uuid }
+        tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+        version_catalogo: { type: string }
+        obligatorios: { $ref: '#/components/schemas/Cifra' }
+        recomendados: { $ref: '#/components/schemas/Cifra' }
+        avance_general: { $ref: '#/components/schemas/Cifra' }
+        por_estandar:
+          type: array
+          items:
+            type: object
+            properties:
+              estandar: { type: integer }
+              obligatorios: { $ref: '#/components/schemas/Cifra' }
+              recomendados: { $ref: '#/components/schemas/Cifra' }
+              avance_general: { $ref: '#/components/schemas/Cifra' }
+        clasificaciones_anteriores:
+          type: array
+          items:
+            type: object
+            properties:
+              tipo_pi: { $ref: '#/components/schemas/TipoPI' }
+              fecha_desde: { type: string, format: date }
+              fecha_hasta: { type: string, format: date }
+              obligatorios: { $ref: '#/components/schemas/Cifra' }
+
+    HistorialParque:
+      type: object
+      properties:
+        parque: { $ref: '#/components/schemas/ParqueResumen' }
+        participaciones:
+          type: array
+          items:
+            type: object
+            properties:
+              generacion: { $ref: '#/components/schemas/Generacion' }
+              fecha_termino_programa: { type: string, format: date, nullable: true }
+              fecha_proxima_actualizacion: { type: string, format: date, nullable: true }
+              autoevaluaciones_respondidas: { type: integer }
+              opiniones:
+                type: array
+                items: { $ref: '#/components/schemas/Opinion' }
+              dictamenes:
+                type: array
+                items: { $ref: '#/components/schemas/Dictamen' }
+
+    CriterioParque:
+      type: object
+      properties:
+        criterio_id: { type: string, format: uuid }
+        clave: { type: string }
+        estandar: { type: integer }
+        subestandar: { type: string }
+        descripcion: { type: string }
+        marca: { type: string, enum: [O, R] }
+        estado_calificacion: { $ref: '#/components/schemas/EstadoCalificacion' }
+        actualizado_en: { type: string, format: date-time, nullable: true }
+        actualizado_por:
+          allOf: [ { $ref: '#/components/schemas/UsuarioResumen' } ]
+          nullable: true
+        atrasado: { type: boolean }
+
+    CriterioParqueDetalle:
+      allOf:
+        - $ref: '#/components/schemas/CriterioParque'
+        - type: object
+          properties:
+            metodo_verificacion: { type: string }
+            evidencia_suficiente: { type: string, nullable: true }
+
+    Recomendacion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        texto: { type: string }
+        autor: { $ref: '#/components/schemas/UsuarioResumen' }
+        creada_en: { type: string, format: date-time }
+
+    RecomendacionCrear:
+      type: object
+      required: [texto]
+      properties:
+        texto: { type: string, maxLength: 4000 }
+
+    Autoevaluacion:
+      type: object
+      properties:
+        criterio_id: { type: string, format: uuid }
+        respuesta: { $ref: '#/components/schemas/RespuestaAutoevaluacion' }
+        comentario: { type: string, nullable: true }
+        actualizada_en: { type: string, format: date-time }
+        actualizada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+
+    Compromiso:
+      type: object
+      properties:
+        criterio_id: { type: string, format: uuid }
+        clave: { type: string }
+        responsable: { $ref: '#/components/schemas/UsuarioResumen' }
+        fecha_comprometida: { type: string, format: date }
+        atrasado: { type: boolean }
+        estado_calificacion: { $ref: '#/components/schemas/EstadoCalificacion' }
+
+    VersionEvidencia:
+      type: object
+      properties:
+        numero: { type: integer }
+        nombre_original: { type: string }
+        tipo_mime: { type: string }
+        tamano_bytes: { type: integer }
+        cargada_en: { type: string, format: date-time }
+        cargada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+        vigente: { type: boolean }
+
+    Evidencia:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parque_id: { type: string, format: uuid }
+        criterio_id: { type: string, format: uuid }
+        clave_criterio: { type: string }
+        fase: { type: string }
+        estado: { $ref: '#/components/schemas/EstadoEvidencia' }
+        es_administrativa: { type: boolean }
+        documento_id: { type: string, format: uuid }
+        versiones:
+          type: array
+          items: { $ref: '#/components/schemas/VersionEvidencia' }
+        creada_en: { type: string, format: date-time }
+        creada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+        eliminada_en: { type: string, format: date-time, nullable: true }
+
+    PaginaEvidencias:
+      type: object
+      properties:
+        datos:
+          type: array
+          items: { $ref: '#/components/schemas/Evidencia' }
+        paginacion: { $ref: '#/components/schemas/Paginacion' }
+
+    CargaEvidencias:
+      type: object
+      required: [archivos, criterio_ids, fase]
+      properties:
+        archivos:
+          type: array
+          minItems: 1
+          items: { type: string, format: binary }
+        criterio_ids:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        fase: { type: string }
+        es_administrativa: { type: boolean, default: false }
+
+    ResultadoCargaEvidencias:
+      type: object
+      properties:
+        creadas:
+          type: array
+          items: { $ref: '#/components/schemas/Evidencia' }
+        rechazadas:
+          type: array
+          items:
+            type: object
+            properties:
+              nombre_archivo: { type: string }
+              motivo: { type: string }
+
+    Observacion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        evidencia_id: { type: string, format: uuid }
+        version: { type: integer }
+        texto: { type: string }
+        autor: { $ref: '#/components/schemas/UsuarioResumen' }
+        creada_en: { type: string, format: date-time }
+
+    ObservacionCrear:
+      type: object
+      required: [texto]
+      properties:
+        texto: { type: string, maxLength: 4000 }
+
+    EnlaceDescarga:
+      type: object
+      properties:
+        url: { type: string, format: uri }
+        expira_en: { type: string, format: date-time }
+
+    RevisionAnalisisRiesgos:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parque_id: { type: string, format: uuid }
+        fecha_revision: { type: string, format: date }
+        version_documento: { type: string }
+        firmado_por: { type: string }
+        resumen: { type: string }
+        vigente: { type: boolean }
+        tiene_documento: { type: boolean }
+        registrada_por: { $ref: '#/components/schemas/UsuarioResumen' }
+        registrada_en: { type: string, format: date-time }
+
+    RevisionAnalisisRiesgosCrear:
+      type: object
+      required: [fecha_revision, version_documento, firmado_por, resumen]
+      properties:
+        fecha_revision: { type: string, format: date }
+        version_documento: { type: string }
+        firmado_por: { type: string }
+        resumen: { type: string, maxLength: 4000 }
+
+    Opinion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parque_id: { type: string, format: uuid }
+        generacion_id: { type: string, format: uuid }
+        tipo: { type: string, enum: [intermedia, final] }
+        favorable: { type: boolean, nullable: true }
+        comentario: { type: string, nullable: true }
+        cumplimiento_obligatorios: { type: number, nullable: true }
+        avance_general: { type: number, nullable: true }
+        emitida_por: { $ref: '#/components/schemas/UsuarioResumen' }
+        emitida_en: { type: string, format: date-time }
+
+    OpinionCrear:
+      type: object
+      required: [tipo]
+      properties:
+        tipo: { type: string, enum: [intermedia, final] }
+        favorable: { type: boolean }
+        comentario: { type: string, maxLength: 4000 }
+
+    EvaluacionDesempeno:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        folio: { type: string, example: ED-2027-0007 }
+        fecha: { type: string, format: date }
+        consultor: { $ref: '#/components/schemas/UsuarioResumen' }
+        version_catalogo: { type: string }
+        resultado: { type: string }
+        tiene_archivo: { type: boolean }
+
+    EvaluacionDesempenoCrear:
+      type: object
+      required: [fecha, resultado]
+      properties:
+        fecha: { type: string, format: date }
+        resultado: { type: string, maxLength: 8000 }
+        archivo: { type: string, format: binary }
+
+    SesionComite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parque_id: { type: string, format: uuid }
+        consultor_comite: { $ref: '#/components/schemas/UsuarioResumen' }
+        estado: { type: string, enum: [abierta, cerrada] }
+        abierta_en: { type: string, format: date-time }
+        cerrada_en: { type: string, format: date-time, nullable: true }
+
+    SesionComiteCrear:
+      type: object
+      required: [consultor_comite_id]
+      properties:
+        consultor_comite_id: { type: string, format: uuid }
+
+    SesionComiteActualizar:
+      type: object
+      required: [estado]
+      properties:
+        estado: { type: string, enum: [cerrada] }
+
+    Dictamen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parque_id: { type: string, format: uuid }
+        generacion_id: { type: string, format: uuid }
+        resultado: { type: string, enum: [otorgar, no_otorgar] }
+        motivo: { type: string }
+        estado: { type: string, enum: [borrador, firmado] }
+        capturado_por: { $ref: '#/components/schemas/UsuarioResumen' }
+        capturado_en: { type: string, format: date-time }
+        firmado_por:
+          allOf: [ { $ref: '#/components/schemas/UsuarioResumen' } ]
+          nullable: true
+        firmado_en: { type: string, format: date-time, nullable: true }
+        vigencia_hasta: { type: string, format: date, nullable: true }
+
+    DictamenCrear:
+      type: object
+      required: [resultado, motivo]
+      properties:
+        resultado: { type: string, enum: [otorgar, no_otorgar] }
+        motivo: { type: string, maxLength: 4000 }
+
+    ReporteMensual:
+      type: object
+      properties:
+        generacion: { type: string }
+        periodo: { type: string, example: 2027-05 }
+        generado_en: { type: string, format: date-time }
+        parques:
+          type: array
+          items:
+            type: object
+            properties:
+              parque_id: { type: string, format: uuid }
+              nombre: { type: string }
+              fase_actual: { type: string }
+              atrasado: { type: boolean }
+              observaciones_abiertas: { type: integer }
+
+    EventoBitacora:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fecha_hora: { type: string, format: date-time }
+        usuario_id: { type: string, format: uuid, nullable: true }
+        rol: { type: string, nullable: true }
+        parque_id: { type: string, format: uuid, nullable: true }
+        accion: { type: string }
+        recurso_tipo: { type: string }
+        recurso_id: { type: string, nullable: true }
+        resultado: { type: string, enum: [exitoso, denegado, fallido] }
+
+    PaginaEventosBitacora:
+      type: object
+      properties:
+        datos:
+          type: array
+          items: { $ref: '#/components/schemas/EventoBitacora' }
+        paginacion: { $ref: '#/components/schemas/Paginacion' }
+
+    Configuracion:
+      type: object
+      properties:
+        limite_tamano_archivo_mb: { type: integer, example: 100 }
+        vigencia_distintivo_anios: { type: integer, example: 3 }

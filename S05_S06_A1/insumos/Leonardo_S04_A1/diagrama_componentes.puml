@@ -1,0 +1,50 @@
+@startuml
+title SGPIS - Diagrama de componentes (C4 Container Level)
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+actor "Usuarios del SGPIS\nAMPIP, APPI y consultores" as Users
+
+rectangle "Sistema de Gestión del Programa Parque Industrial Seguro" {
+  component "Frontend web\nInterfaz de usuario\nFormularios, tablas y reportes" as FE
+  component "Backend Python\nAPI REST" as API
+
+  package "Módulos internos del backend" {
+    component "Usuarios y permisos\nControl de acceso por rol y parque" as AUTH
+    component "Parques y checklist\nGestión de criterios" as PARK
+    component "Evidencias\nCarga, versiones y revisión" as EVID
+    component "Opiniones y evaluaciones\nSeguimiento de cumplimiento" as EVAL
+    component "Auditoría y reportes" as AUDIT
+    component "Notificaciones\nGestión de tareas asíncronas" as NOTIF
+  }
+
+  database "PostgreSQL\nDatos estructurados, estados y metadatos" as DB
+  cloud "Almacenamiento de objetos\nArchivos de evidencias" as OBJ
+  component "Trabajador en segundo plano\nCorreos y tareas programadas" as WORKER
+}
+
+cloud "Servicio externo de correo electrónico" as MAIL
+
+Users --> FE : HTTPS
+FE --> API : HTTPS / JSON\nSolicitudes API REST
+
+API --> AUTH
+API --> PARK
+API --> EVID
+API --> EVAL
+API --> AUDIT
+API --> NOTIF
+
+AUTH --> DB : SQL
+PARK --> DB : SQL
+EVID --> DB : SQL: metadatos y referencias
+EVAL --> DB : SQL
+AUDIT --> DB : SQL: eventos de auditoría
+NOTIF --> DB : SQL: estado de notificaciones
+
+EVID --> OBJ : API de almacenamiento\nCarga y recuperación autorizada
+NOTIF --> WORKER : Encola tareas
+WORKER --> DB : Consulta y actualiza estados
+WORKER --> MAIL : SMTP o API del proveedor
+@enduml
