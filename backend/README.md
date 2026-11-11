@@ -50,6 +50,16 @@ uv sync
 uv run pytest
 ```
 
+## Calidad de código (S09_A1)
+
+```bash
+bash scripts/calidad.sh               # pylint, flake8, mypy y bandit; configuración en pyproject.toml y .flake8
+uv run pytest --cov=app --cov-report=term-missing
+uv run pytest tests/medicion_s09.py -s -q   # sentencias SQL y tiempos de GET /parques con 10, 41 y 80 parques
+```
+
+`tests/test_caracterizacion_s09.py` fija el comportamiento de PATCH /parques, PATCH /usuarios y GET /parques antes de refactorizar; `tests/test_refactorizacion_s09.py` reproduce los defectos CR-03 y CR-04. El análisis y las refactorizaciones están en `../S09_A1/`.
+
 ## Estructura
 
 | Ruta | Contenido |

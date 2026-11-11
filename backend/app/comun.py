@@ -1,13 +1,14 @@
 """Piezas transversales: usuario que registra (autenticado), fechas en CDMX, paginación, orden y bitácora."""
 
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -118,6 +119,23 @@ def paginar(items: list, p: ParamsPagina) -> dict:
         "total": len(items),
         "items": items[p.offset: p.offset + p.tamano_pagina],
     }
+
+
+# ------------------------------------------------------------------ cuerpo de los PATCH
+def exigir_campos(cuerpo: BaseModel, no_nulos: Sequence[str], mensajes: Mapping[str, str] | None = None) -> set[str]:
+    """Reglas comunes de los PATCH (422 datos_invalidos): el cuerpo trae al menos un campo y ninguno de `no_nulos`
+    viene en null. Revisa `no_nulos` en el orden dado; `mensajes` cambia el texto de un campo. Devuelve los campos
+    que el cliente envió, aunque sea con null.
+
+    [R3, S09_A1] Antes este bloque estaba copiado en parques.actualizar_parque y usuarios.actualizar_usuario."""
+    campos = set(cuerpo.model_fields_set)
+    if not campos:
+        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
+    for campo in no_nulos:
+        if campo in campos and getattr(cuerpo, campo) is None:
+            mensaje = (mensajes or {}).get(campo, f"El campo {campo} no admite nulo")
+            raise ErrorAPI(422, "datos_invalidos", mensaje)
+    return campos
 
 
 def clave_natural(clave: str) -> tuple:

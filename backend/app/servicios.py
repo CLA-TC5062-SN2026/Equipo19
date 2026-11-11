@@ -2,10 +2,14 @@
 aplicables, cumplimiento y armado de las respuestas que combinan varias tablas."""
 
 import uuid
+from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app import esquemas as e
@@ -75,12 +79,22 @@ def tipo_vigente(db: Session, parque_id: uuid.UUID) -> str | None:
 
 
 def obtener_o_crear_desarrollador(db: Session, nombre: str) -> Desarrollador:
+    """Devuelve el desarrollador con ese nombre y lo crea si no existe.
+
+    [R1, S09_A1] El alta va con INSERT ... ON CONFLICT DO NOTHING, igual que el contador de intentos de login
+    (autenticacion._contador). Si otra transacción está creando el mismo nombre, PostgreSQL espera a que confirme y
+    el INSERT no hace nada; el SELECT siguiente ya ve la fila confirmada. Antes, buscar y luego insertar dejaba una
+    ventana en la que dos altas simultáneas chocaban con uq_desarrollador_nombre y la API respondía 409."""
     nombre = nombre.strip()
-    des = db.scalars(select(Desarrollador).where(Desarrollador.nombre == nombre)).first()
+    consulta = select(Desarrollador).where(Desarrollador.nombre == nombre)
+    des = db.scalars(consulta).first()
     if des is None:
-        des = Desarrollador(nombre=nombre)
-        db.add(des)
-        db.flush()
+        db.execute(
+            pg_insert(Desarrollador)
+            .values(nombre=nombre)
+            .on_conflict_do_nothing(constraint="uq_desarrollador_nombre")
+        )
+        des = db.scalars(consulta).one()
     return des
 
 
@@ -114,63 +128,132 @@ def usuario_a_esquema(db: Session, u: Usuario) -> e.Usuario:
     )
 
 
-def fase_actual(db: Session, exp: Expediente) -> str | None:
-    filas = db.execute(
-        select(FaseExpediente.fase, FaseExpediente.estado, CatalogoFase.orden)
-        .join(CatalogoFase, CatalogoFase.clave == FaseExpediente.fase)
-        .where(FaseExpediente.expediente_id == exp.id)
-        .order_by(CatalogoFase.orden)
-    ).all()
-    for fase, estado, _ in filas:
+def _fase_actual_de(fases: Sequence[tuple[str, str]]) -> str | None:
+    """Fase en proceso; si ninguna lo está, la última iniciada. `fases` = [(fase, estado)] en el orden del catálogo."""
+    for fase, estado in fases:
         if estado == "en_proceso":
             return fase
-    iniciadas = [f for f, estado, _ in filas if estado != "pendiente"]
+    iniciadas = [fase for fase, estado in fases if estado != "pendiente"]
     return iniciadas[-1] if iniciadas else None
 
 
-def parque_a_esquema(db: Session, parque: Parque) -> e.Parque:
-    exp = expediente_actual(db, parque.id)
-    datos: dict = dict(
-        id=parque.id,
-        tipo_registro=parque.tipo_registro,
-        nombre=parque.nombre,
-        desarrollador=nombre_desarrollador(db, parque.desarrollador_id),
-        tipo_pi=tipo_vigente(db, parque.id),
-        region=parque.region,
-        estado=parque.estado,
-        fecha_alta=parque.fecha_alta,
-        fecha_ultimo_dictamen=parque.fecha_ultimo_dictamen,
-        motivo_baja=parque.motivo_baja,
-        contacto_principal_id=parque.contacto_principal_id,
-        fecha_termino_programa=parque.fecha_termino_historico,
-        atrasado_actualizacion=False,
-    )
-    if exp is not None:
-        gen = generacion_de(db, exp)
-        version = db.get(VersionCatalogo, gen.version_catalogo_id)
-        asignacion = db.scalars(
-            select(AsignacionConsultor).where(
-                AsignacionConsultor.expediente_id == exp.id, AsignacionConsultor.vigente_hasta.is_(None)
-            )
-        ).first()
-        ultima = db.scalar(
-            select(func.max(ActualizacionAnual.fecha))
+@dataclass
+class _DatosDeParques:
+    """Lo necesario para armar la respuesta de varios parques, cargado con una consulta por dato."""
+
+    expedientes: dict[uuid.UUID, tuple[Expediente, Generacion]]  # por parque: expediente vigente y su generación
+    desarrolladores: dict[uuid.UUID, str]  # por desarrollador
+    tipos: dict[uuid.UUID, str]  # por parque: tipo de PI vigente
+    versiones: dict[uuid.UUID, str]  # por versión del catálogo
+    consultores: dict[uuid.UUID, uuid.UUID]  # por expediente: consultor con asignación vigente
+    ultimas: dict[uuid.UUID, date]  # por parque: fecha de la última actualización anual
+    fases: dict[uuid.UUID, list[tuple[str, str]]]  # por expediente: [(fase, estado)] en orden del catálogo
+
+
+def _cargar_datos_de_parques(db: Session, parques: Sequence[Parque]) -> _DatosDeParques:
+    """Siete consultas en total, sin importar cuántos parques sean."""
+    ids = [p.id for p in parques]
+    # Expediente vigente de cada parque: el de la generación más reciente (mismo criterio que expediente_actual).
+    expedientes = {
+        exp.parque_id: (exp, gen)
+        for exp, gen in db.execute(
+            select(Expediente, Generacion)
+            .join(Generacion, Generacion.id == Expediente.generacion_id)
+            .where(Expediente.parque_id.in_(ids))
+            .order_by(Expediente.parque_id, Generacion.fecha_inicio.desc(), Generacion.nombre.desc())
+            .distinct(Expediente.parque_id)
+        ).tuples()
+    }
+    ids_exp = [exp.id for exp, _ in expedientes.values()]
+    fases: dict[uuid.UUID, list[tuple[str, str]]] = defaultdict(list)
+    for exp_id, fase, estado in db.execute(
+        select(FaseExpediente.expediente_id, FaseExpediente.fase, FaseExpediente.estado)
+        .join(CatalogoFase, CatalogoFase.clave == FaseExpediente.fase)
+        .where(FaseExpediente.expediente_id.in_(ids_exp))
+        .order_by(FaseExpediente.expediente_id, CatalogoFase.orden)
+    ).tuples():
+        fases[exp_id].append((fase, estado))
+    return _DatosDeParques(
+        expedientes=expedientes,
+        desarrolladores=dict(db.execute(
+            select(Desarrollador.id, Desarrollador.nombre)
+            .where(Desarrollador.id.in_({p.desarrollador_id for p in parques if p.desarrollador_id}))
+        ).tuples().all()),
+        tipos=dict(db.execute(
+            select(ClasificacionTipoPI.parque_id, ClasificacionTipoPI.tipo_pi)
+            .where(ClasificacionTipoPI.parque_id.in_(ids), ClasificacionTipoPI.fecha_hasta.is_(None))
+        ).tuples().all()),
+        versiones=dict(db.execute(
+            select(VersionCatalogo.id, VersionCatalogo.nombre)
+            .where(VersionCatalogo.id.in_({gen.version_catalogo_id for _, gen in expedientes.values()}))
+        ).tuples().all()),
+        consultores=dict(db.execute(
+            select(AsignacionConsultor.expediente_id, AsignacionConsultor.consultor_id)
+            .where(AsignacionConsultor.expediente_id.in_(ids_exp), AsignacionConsultor.vigente_hasta.is_(None))
+        ).tuples().all()),
+        ultimas=dict(db.execute(
+            select(Expediente.parque_id, func.max(ActualizacionAnual.fecha))
             .join(Expediente, Expediente.id == ActualizacionAnual.expediente_id)
-            .where(Expediente.parque_id == parque.id)
-        )
-        datos.update(
-            generacion_id=gen.id,
-            fase=fase_actual(db, exp),
-            version_catalogo=version.nombre if version else None,
-            consultor_asignado_id=asignacion.consultor_id if asignacion else None,
-            fecha_termino_programa=exp.fecha_termino_programa,
-            fecha_proxima_actualizacion=exp.fecha_proxima_actualizacion,
-            fecha_ultima_actualizacion=ultima,
-            atrasado_actualizacion=bool(
-                exp.fecha_proxima_actualizacion and exp.fecha_proxima_actualizacion < hoy()
+            .where(Expediente.parque_id.in_(ids))
+            .group_by(Expediente.parque_id)
+        ).tuples().all()),
+        fases=fases,
+    )
+
+
+def _armar_parque(parque: Parque, datos: _DatosDeParques, fecha_hoy: date) -> e.Parque:
+    """Respuesta de un parque a partir de datos ya cargados; no consulta la base."""
+    # dict[str, Any] como en la versión anterior: los modelos ORM tipan las columnas ENUM como str y mypy no
+    # aceptaría str donde el esquema pide Literal (ver clasificacion_problemas.md, grupo I-4).
+    campos: dict[str, Any] = {
+        "id": parque.id,
+        "tipo_registro": parque.tipo_registro,
+        "nombre": parque.nombre,
+        "desarrollador": datos.desarrolladores.get(parque.desarrollador_id) if parque.desarrollador_id else None,
+        "tipo_pi": datos.tipos.get(parque.id),
+        "region": parque.region,
+        "estado": parque.estado,
+        "fecha_alta": parque.fecha_alta,
+        "fecha_ultimo_dictamen": parque.fecha_ultimo_dictamen,
+        "motivo_baja": parque.motivo_baja,
+        "contacto_principal_id": parque.contacto_principal_id,
+        "fecha_termino_programa": parque.fecha_termino_historico,
+        "atrasado_actualizacion": False,
+    }
+    if parque.id in datos.expedientes:
+        exp, gen = datos.expedientes[parque.id]
+        campos.update({
+            "generacion_id": gen.id,
+            "fase": _fase_actual_de(datos.fases[exp.id]),
+            "version_catalogo": datos.versiones.get(gen.version_catalogo_id),
+            "consultor_asignado_id": datos.consultores.get(exp.id),
+            "fecha_termino_programa": exp.fecha_termino_programa,
+            "fecha_proxima_actualizacion": exp.fecha_proxima_actualizacion,
+            "fecha_ultima_actualizacion": datos.ultimas.get(parque.id),
+            "atrasado_actualizacion": bool(
+                exp.fecha_proxima_actualizacion and exp.fecha_proxima_actualizacion < fecha_hoy
             ),
-        )
-    return e.Parque(**datos)
+        })
+    return e.Parque(**campos)
+
+
+def parques_a_esquema(db: Session, parques: Sequence[Parque]) -> list[e.Parque]:
+    """Respuesta de varios parques con un número fijo de consultas.
+
+    [R2, S09_A1] Antes cada parque costaba ocho consultas (expediente, desarrollador, tipo de PI, generación,
+    versión, asignación, última actualización y fases): GET /parques con 80 parques ejecutaba 643 sentencias.
+    Ahora la carga (_cargar_datos_de_parques) y el armado (_armar_parque) están separados: siete consultas para
+    todos los parques y el armado en memoria."""
+    if not parques:
+        return []
+    datos = _cargar_datos_de_parques(db, parques)
+    fecha_hoy = hoy()
+    return [_armar_parque(parque, datos, fecha_hoy) for parque in parques]
+
+
+def parque_a_esquema(db: Session, parque: Parque) -> e.Parque:
+    """Un solo parque: misma construcción que el listado, así las dos respuestas no pueden divergir."""
+    return parques_a_esquema(db, [parque])[0]
 
 
 def clasificacion_a_esquema(c: ClasificacionTipoPI) -> e.ClasificacionTipoPI:

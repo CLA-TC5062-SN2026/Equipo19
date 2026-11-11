@@ -6,9 +6,21 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Query, Response
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app import esquemas as e
-from app.comun import DB, Actor, Paginacion, ahora, hoy, mas_un_anio, ordenar_lista, paginar, registrar_bitacora
+from app.comun import (
+    DB,
+    Actor,
+    Paginacion,
+    ahora,
+    exigir_campos,
+    hoy,
+    mas_un_anio,
+    ordenar_lista,
+    paginar,
+    registrar_bitacora,
+)
 from app.errores import ErrorAPI
 from app.modelos import (
     ActualizacionAnual,
@@ -18,6 +30,7 @@ from app.modelos import (
     Expediente,
     Generacion,
     Parque,
+    Usuario,
 )
 from app.permisos import parques_visibles
 from app.servicios import (
@@ -30,6 +43,7 @@ from app.servicios import (
     obtener_o_crear_desarrollador,
     obtener_parque,
     parque_a_esquema,
+    parques_a_esquema,
 )
 
 router = APIRouter(tags=["Parques"])
@@ -54,7 +68,7 @@ def listar_parques(
     if region:
         q = q.where(Parque.region == region)
     q = q.where(Parque.estado == estado) if estado else q.where(Parque.estado != "inactivo")
-    items = [parque_a_esquema(db, parque) for parque in db.scalars(q)]
+    items = parques_a_esquema(db, db.scalars(q).all())  # [R2] consultas fijas, no por parque
     if generacion_id is not None:
         items = [x for x in items if x.generacion_id == generacion_id]
     if atrasado is not None:
@@ -117,32 +131,35 @@ def obtener_parque_endpoint(parqueId: uuid.UUID, db: DB):
     return parque_a_esquema(db, obtener_parque(db, parqueId))
 
 
-@router.patch("/parques/{parqueId}", response_model=e.Parque)
-def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor: Actor):
-    parque = obtener_parque(db, parqueId)
-    campos = cuerpo.model_fields_set
-    if not campos:
-        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
-    if "estado" in campos and cuerpo.estado is None:
-        raise ErrorAPI(422, "datos_invalidos", "El único estado admitido es inactivo")
-    for campo in ("nombre", "desarrollador", "region"):
-        if campo in campos and getattr(cuerpo, campo) is None:
-            raise ErrorAPI(422, "datos_invalidos", f"El campo {campo} no admite nulo")
-
+# ------------------------------------------------------------------ PATCH /parques/{parqueId}
+# [R3, S09_A1] actualizar_parque tenía complejidad ciclomática 20 y hacía cinco cosas: validar el cuerpo, validar la
+# baja, ubicar el expediente, aplicar los cambios y registrar la bitácora. Cada paso es ahora una función; el orden
+# de los errores y de los registros de bitácora es el mismo (tests/test_caracterizacion_s09.py).
+def _validar_actualizacion(parque: Parque, cuerpo: e.ParqueUpdate) -> set[str]:
+    """Reglas que no consultan la base. Devuelve los campos enviados."""
+    campos = exigir_campos(
+        cuerpo, ("estado", "nombre", "desarrollador", "region"), {"estado": "El único estado admitido es inactivo"}
+    )
     if cuerpo.estado == "inactivo":
         if parque.estado == "historico":
             raise ErrorAPI(409, "transicion_invalida", "Un parque histórico no se puede dar de baja")
         if not cuerpo.motivo:
             raise ErrorAPI(422, "motivo_requerido", "Indique el motivo de la baja del parque")
+    return campos
 
-    exp = None
-    if campos & {"fecha_termino_programa", "fecha_proxima_actualizacion"}:
-        if parque.tipo_registro == "historico":
-            if "fecha_proxima_actualizacion" in campos:
-                raise ErrorAPI(422, "parque_historico", "Un parque histórico no tiene actualización anual")
-        else:
-            exp = exigir_expediente(db, parque)
 
+def _expediente_para_fechas(db: Session, parque: Parque, campos: set[str]) -> Expediente | None:
+    """Las fechas del programa viven en el expediente. El histórico no tiene expediente ni actualización anual."""
+    if not campos & {"fecha_termino_programa", "fecha_proxima_actualizacion"}:
+        return None
+    if parque.tipo_registro == "historico":
+        if "fecha_proxima_actualizacion" in campos:
+            raise ErrorAPI(422, "parque_historico", "Un parque histórico no tiene actualización anual")
+        return None
+    return exigir_expediente(db, parque)
+
+
+def _aplicar_datos_generales(db: Session, parque: Parque, cuerpo: e.ParqueUpdate) -> list[str]:
     cambios = []
     if cuerpo.nombre is not None:
         parque.nombre = cuerpo.nombre.strip()
@@ -153,23 +170,44 @@ def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor
     if cuerpo.region is not None:
         parque.region = cuerpo.region
         cambios.append("region")
+    return cambios
+
+
+def _aplicar_fechas_programa(
+    parque: Parque, exp: Expediente | None, cuerpo: e.ParqueUpdate, campos: set[str]
+) -> list[str]:
+    cambios = []
     if "fecha_termino_programa" in campos:
         if exp is not None:
             exp.fecha_termino_programa = cuerpo.fecha_termino_programa
         elif cuerpo.fecha_termino_programa is not None:
             parque.fecha_termino_historico = cuerpo.fecha_termino_programa
-        cambios.append("fechaTerminoPrograma")
+        cambios.append("fechaTerminoPrograma")  # CR-06: se anota aunque el null del histórico se ignore
     if "fecha_proxima_actualizacion" in campos and exp is not None:
         exp.fecha_proxima_actualizacion = cuerpo.fecha_proxima_actualizacion
         cambios.append("fechaProximaActualizacion")
-    # Repetir la baja de un parque ya inactivo no tiene efectos.
-    if cuerpo.estado == "inactivo" and parque.estado != "inactivo":
-        parque.estado = "inactivo"
-        parque.motivo_baja = cuerpo.motivo
-        registrar_bitacora(
-            db, actor, "baja_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id,
-            detalle=cuerpo.motivo,
-        )
+    return cambios
+
+
+def _dar_de_baja(db: Session, actor: Usuario, parque: Parque, motivo: str | None) -> None:
+    """Repetir la baja de un parque ya inactivo no tiene efectos."""
+    if parque.estado == "inactivo":
+        return
+    parque.estado = "inactivo"
+    parque.motivo_baja = motivo
+    registrar_bitacora(
+        db, actor, "baja_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id, detalle=motivo,
+    )
+
+
+@router.patch("/parques/{parqueId}", response_model=e.Parque)
+def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor: Actor):
+    parque = obtener_parque(db, parqueId)
+    campos = _validar_actualizacion(parque, cuerpo)
+    exp = _expediente_para_fechas(db, parque, campos)
+    cambios = _aplicar_datos_generales(db, parque, cuerpo) + _aplicar_fechas_programa(parque, exp, cuerpo, campos)
+    if cuerpo.estado == "inactivo":
+        _dar_de_baja(db, actor, parque, cuerpo.motivo)
     if cambios:
         registrar_bitacora(
             db, actor, "actualizar_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id,

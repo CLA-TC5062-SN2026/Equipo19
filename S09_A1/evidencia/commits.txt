@@ -1,0 +1,8 @@
+c6bcad9 S09_A1: medición del listado con 21 llamadas por tamaño
+4fe35f1 R2: separa la carga (_cargar_datos_de_parques) del armado (_armar_parque); quita el too-many-locals que había introducido R2
+e4b479d R3 (CR-01, CR-02): actualizar_parque dividido por responsabilidad; exigir_campos compartido con PATCH /usuarios
+7fca2ca R2 (CR-03): parques_a_esquema arma el listado con consultas fijas; parque_a_esquema lo reutiliza
+9eae0fa R1 (CR-04): obtener_o_crear_desarrollador con INSERT ... ON CONFLICT DO NOTHING; sin 409 en altas simultáneas
+b4f2af9 S09_A1: pruebas de caracterización y pruebas que reproducen CR-03 y CR-04 (estas dos fallan antes de refactorizar)
+441f2c0 S09_A1: configura pylint, flake8, mypy y bandit para el backend
+edc8fcb Base: Equipo19-main tal como se descargó de GitHub

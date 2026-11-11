@@ -1,0 +1,462 @@
+diff --git a/backend/app/comun.py b/backend/app/comun.py
+index 436da01..fe658bf 100644
+--- a/backend/app/comun.py
++++ b/backend/app/comun.py
+@@ -1,13 +1,14 @@
+ """Piezas transversales: usuario que registra (autenticado), fechas en CDMX, paginación, orden y bitácora."""
+ 
+ import uuid
+-from collections.abc import Callable, Sequence
++from collections.abc import Callable, Mapping, Sequence
+ from dataclasses import dataclass
+ from datetime import date, datetime, timezone
+ from typing import Annotated, Any
+ from zoneinfo import ZoneInfo
+ 
+ from fastapi import Depends, Query
++from pydantic import BaseModel
+ from sqlalchemy.orm import Session
+ 
+ from app.config import get_settings
+@@ -120,6 +121,23 @@ def paginar(items: list, p: ParamsPagina) -> dict:
+     }
+ 
+ 
++# ------------------------------------------------------------------ cuerpo de los PATCH
++def exigir_campos(cuerpo: BaseModel, no_nulos: Sequence[str], mensajes: Mapping[str, str] | None = None) -> set[str]:
++    """Reglas comunes de los PATCH (422 datos_invalidos): el cuerpo trae al menos un campo y ninguno de `no_nulos`
++    viene en null. Revisa `no_nulos` en el orden dado; `mensajes` cambia el texto de un campo. Devuelve los campos
++    que el cliente envió, aunque sea con null.
++
++    [R3, S09_A1] Antes este bloque estaba copiado en parques.actualizar_parque y usuarios.actualizar_usuario."""
++    campos = set(cuerpo.model_fields_set)
++    if not campos:
++        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
++    for campo in no_nulos:
++        if campo in campos and getattr(cuerpo, campo) is None:
++            mensaje = (mensajes or {}).get(campo, f"El campo {campo} no admite nulo")
++            raise ErrorAPI(422, "datos_invalidos", mensaje)
++    return campos
++
++
+ def clave_natural(clave: str) -> tuple:
+     """'2.10.1' después de '2.9.3'."""
+     return tuple((0, int(p)) if p.isdigit() else (1, p) for p in clave.split("."))
+diff --git a/backend/app/routers/parques.py b/backend/app/routers/parques.py
+index 41058dd..031d3b9 100644
+--- a/backend/app/routers/parques.py
++++ b/backend/app/routers/parques.py
+@@ -6,9 +6,21 @@ from typing import Annotated
+ 
+ from fastapi import APIRouter, Body, Query, Response
+ from sqlalchemy import select
++from sqlalchemy.orm import Session
+ 
+ from app import esquemas as e
+-from app.comun import DB, Actor, Paginacion, ahora, hoy, mas_un_anio, ordenar_lista, paginar, registrar_bitacora
++from app.comun import (
++    DB,
++    Actor,
++    Paginacion,
++    ahora,
++    exigir_campos,
++    hoy,
++    mas_un_anio,
++    ordenar_lista,
++    paginar,
++    registrar_bitacora,
++)
+ from app.errores import ErrorAPI
+ from app.modelos import (
+     ActualizacionAnual,
+@@ -18,6 +30,7 @@ from app.modelos import (
+     Expediente,
+     Generacion,
+     Parque,
++    Usuario,
+ )
+ from app.permisos import parques_visibles
+ from app.servicios import (
+@@ -30,6 +43,7 @@ from app.servicios import (
+     obtener_o_crear_desarrollador,
+     obtener_parque,
+     parque_a_esquema,
++    parques_a_esquema,
+ )
+ 
+ router = APIRouter(tags=["Parques"])
+@@ -54,7 +68,7 @@ def listar_parques(
+     if region:
+         q = q.where(Parque.region == region)
+     q = q.where(Parque.estado == estado) if estado else q.where(Parque.estado != "inactivo")
+-    items = [parque_a_esquema(db, parque) for parque in db.scalars(q)]
++    items = parques_a_esquema(db, db.scalars(q).all())  # [R2] consultas fijas, no por parque
+     if generacion_id is not None:
+         items = [x for x in items if x.generacion_id == generacion_id]
+     if atrasado is not None:
+@@ -117,32 +131,35 @@ def obtener_parque_endpoint(parqueId: uuid.UUID, db: DB):
+     return parque_a_esquema(db, obtener_parque(db, parqueId))
+ 
+ 
+-@router.patch("/parques/{parqueId}", response_model=e.Parque)
+-def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor: Actor):
+-    parque = obtener_parque(db, parqueId)
+-    campos = cuerpo.model_fields_set
+-    if not campos:
+-        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
+-    if "estado" in campos and cuerpo.estado is None:
+-        raise ErrorAPI(422, "datos_invalidos", "El único estado admitido es inactivo")
+-    for campo in ("nombre", "desarrollador", "region"):
+-        if campo in campos and getattr(cuerpo, campo) is None:
+-            raise ErrorAPI(422, "datos_invalidos", f"El campo {campo} no admite nulo")
+-
++# ------------------------------------------------------------------ PATCH /parques/{parqueId}
++# [R3, S09_A1] actualizar_parque tenía complejidad ciclomática 20 y hacía cinco cosas: validar el cuerpo, validar la
++# baja, ubicar el expediente, aplicar los cambios y registrar la bitácora. Cada paso es ahora una función; el orden
++# de los errores y de los registros de bitácora es el mismo (tests/test_caracterizacion_s09.py).
++def _validar_actualizacion(parque: Parque, cuerpo: e.ParqueUpdate) -> set[str]:
++    """Reglas que no consultan la base. Devuelve los campos enviados."""
++    campos = exigir_campos(
++        cuerpo, ("estado", "nombre", "desarrollador", "region"), {"estado": "El único estado admitido es inactivo"}
++    )
+     if cuerpo.estado == "inactivo":
+         if parque.estado == "historico":
+             raise ErrorAPI(409, "transicion_invalida", "Un parque histórico no se puede dar de baja")
+         if not cuerpo.motivo:
+             raise ErrorAPI(422, "motivo_requerido", "Indique el motivo de la baja del parque")
++    return campos
+ 
+-    exp = None
+-    if campos & {"fecha_termino_programa", "fecha_proxima_actualizacion"}:
+-        if parque.tipo_registro == "historico":
+-            if "fecha_proxima_actualizacion" in campos:
+-                raise ErrorAPI(422, "parque_historico", "Un parque histórico no tiene actualización anual")
+-        else:
+-            exp = exigir_expediente(db, parque)
+ 
++def _expediente_para_fechas(db: Session, parque: Parque, campos: set[str]) -> Expediente | None:
++    """Las fechas del programa viven en el expediente. El histórico no tiene expediente ni actualización anual."""
++    if not campos & {"fecha_termino_programa", "fecha_proxima_actualizacion"}:
++        return None
++    if parque.tipo_registro == "historico":
++        if "fecha_proxima_actualizacion" in campos:
++            raise ErrorAPI(422, "parque_historico", "Un parque histórico no tiene actualización anual")
++        return None
++    return exigir_expediente(db, parque)
++
++
++def _aplicar_datos_generales(db: Session, parque: Parque, cuerpo: e.ParqueUpdate) -> list[str]:
+     cambios = []
+     if cuerpo.nombre is not None:
+         parque.nombre = cuerpo.nombre.strip()
+@@ -153,23 +170,44 @@ def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor
+     if cuerpo.region is not None:
+         parque.region = cuerpo.region
+         cambios.append("region")
++    return cambios
++
++
++def _aplicar_fechas_programa(
++    parque: Parque, exp: Expediente | None, cuerpo: e.ParqueUpdate, campos: set[str]
++) -> list[str]:
++    cambios = []
+     if "fecha_termino_programa" in campos:
+         if exp is not None:
+             exp.fecha_termino_programa = cuerpo.fecha_termino_programa
+         elif cuerpo.fecha_termino_programa is not None:
+             parque.fecha_termino_historico = cuerpo.fecha_termino_programa
+-        cambios.append("fechaTerminoPrograma")
++        cambios.append("fechaTerminoPrograma")  # CR-06: se anota aunque el null del histórico se ignore
+     if "fecha_proxima_actualizacion" in campos and exp is not None:
+         exp.fecha_proxima_actualizacion = cuerpo.fecha_proxima_actualizacion
+         cambios.append("fechaProximaActualizacion")
+-    # Repetir la baja de un parque ya inactivo no tiene efectos.
+-    if cuerpo.estado == "inactivo" and parque.estado != "inactivo":
+-        parque.estado = "inactivo"
+-        parque.motivo_baja = cuerpo.motivo
+-        registrar_bitacora(
+-            db, actor, "baja_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id,
+-            detalle=cuerpo.motivo,
+-        )
++    return cambios
++
++
++def _dar_de_baja(db: Session, actor: Usuario, parque: Parque, motivo: str | None) -> None:
++    """Repetir la baja de un parque ya inactivo no tiene efectos."""
++    if parque.estado == "inactivo":
++        return
++    parque.estado = "inactivo"
++    parque.motivo_baja = motivo
++    registrar_bitacora(
++        db, actor, "baja_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id, detalle=motivo,
++    )
++
++
++@router.patch("/parques/{parqueId}", response_model=e.Parque)
++def actualizar_parque(parqueId: uuid.UUID, cuerpo: e.ParqueUpdate, db: DB, actor: Actor):
++    parque = obtener_parque(db, parqueId)
++    campos = _validar_actualizacion(parque, cuerpo)
++    exp = _expediente_para_fechas(db, parque, campos)
++    cambios = _aplicar_datos_generales(db, parque, cuerpo) + _aplicar_fechas_programa(parque, exp, cuerpo, campos)
++    if cuerpo.estado == "inactivo":
++        _dar_de_baja(db, actor, parque, cuerpo.motivo)
+     if cambios:
+         registrar_bitacora(
+             db, actor, "actualizar_parque", recurso_tipo="parque", recurso_id=parque.id, parque_id=parque.id,
+diff --git a/backend/app/routers/usuarios.py b/backend/app/routers/usuarios.py
+index db32d08..5a37fa5 100644
+--- a/backend/app/routers/usuarios.py
++++ b/backend/app/routers/usuarios.py
+@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query, Response
+ from sqlalchemy import func, select, update
+ 
+ from app import esquemas as e
+-from app.comun import DB, Actor, Paginacion, ahora, orden_sql, registrar_bitacora
++from app.comun import DB, Actor, Paginacion, ahora, exigir_campos, orden_sql, registrar_bitacora
+ from app.config import get_settings
+ from app.errores import ErrorAPI, no_encontrado
+ from app.modelos import (
+@@ -174,12 +174,7 @@ def obtener_usuario(usuarioId: uuid.UUID, db: DB):
+ @router.patch("/usuarios/{usuarioId}", response_model=e.Usuario)
+ def actualizar_usuario(usuarioId: uuid.UUID, cuerpo: e.UsuarioUpdate, db: DB, actor: Actor):
+     u = _obtener_usuario(db, usuarioId)
+-    campos = cuerpo.model_fields_set
+-    if not campos:
+-        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
+-    for campo in ("nombre", "rol", "estado"):
+-        if campo in campos and getattr(cuerpo, campo) is None:
+-            raise ErrorAPI(422, "datos_invalidos", f"El campo {campo} no admite nulo")
++    campos = exigir_campos(cuerpo, ("nombre", "rol", "estado"))  # [R3] regla compartida con PATCH /parques
+     baja = cuerpo.estado == "inactivo" and u.estado != "inactivo"
+     if baja and not cuerpo.motivo:
+         raise ErrorAPI(422, "motivo_requerido", "Indique el motivo de la baja del usuario")
+diff --git a/backend/app/servicios.py b/backend/app/servicios.py
+index 7f08e85..0c7a19c 100644
+--- a/backend/app/servicios.py
++++ b/backend/app/servicios.py
+@@ -2,10 +2,14 @@
+ aplicables, cumplimiento y armado de las respuestas que combinan varias tablas."""
+ 
+ import uuid
++from collections import defaultdict
++from collections.abc import Sequence
+ from dataclasses import dataclass
+-from datetime import datetime
++from datetime import date, datetime
++from typing import Any
+ 
+ from sqlalchemy import and_, func, select
++from sqlalchemy.dialects.postgresql import insert as pg_insert
+ from sqlalchemy.orm import Session
+ 
+ from app import esquemas as e
+@@ -75,12 +79,22 @@ def tipo_vigente(db: Session, parque_id: uuid.UUID) -> str | None:
+ 
+ 
+ def obtener_o_crear_desarrollador(db: Session, nombre: str) -> Desarrollador:
++    """Devuelve el desarrollador con ese nombre y lo crea si no existe.
++
++    [R1, S09_A1] El alta va con INSERT ... ON CONFLICT DO NOTHING, igual que el contador de intentos de login
++    (autenticacion._contador). Si otra transacción está creando el mismo nombre, PostgreSQL espera a que confirme y
++    el INSERT no hace nada; el SELECT siguiente ya ve la fila confirmada. Antes, buscar y luego insertar dejaba una
++    ventana en la que dos altas simultáneas chocaban con uq_desarrollador_nombre y la API respondía 409."""
+     nombre = nombre.strip()
+-    des = db.scalars(select(Desarrollador).where(Desarrollador.nombre == nombre)).first()
++    consulta = select(Desarrollador).where(Desarrollador.nombre == nombre)
++    des = db.scalars(consulta).first()
+     if des is None:
+-        des = Desarrollador(nombre=nombre)
+-        db.add(des)
+-        db.flush()
++        db.execute(
++            pg_insert(Desarrollador)
++            .values(nombre=nombre)
++            .on_conflict_do_nothing(constraint="uq_desarrollador_nombre")
++        )
++        des = db.scalars(consulta).one()
+     return des
+ 
+ 
+@@ -114,63 +128,132 @@ def usuario_a_esquema(db: Session, u: Usuario) -> e.Usuario:
+     )
+ 
+ 
+-def fase_actual(db: Session, exp: Expediente) -> str | None:
+-    filas = db.execute(
+-        select(FaseExpediente.fase, FaseExpediente.estado, CatalogoFase.orden)
+-        .join(CatalogoFase, CatalogoFase.clave == FaseExpediente.fase)
+-        .where(FaseExpediente.expediente_id == exp.id)
+-        .order_by(CatalogoFase.orden)
+-    ).all()
+-    for fase, estado, _ in filas:
++def _fase_actual_de(fases: Sequence[tuple[str, str]]) -> str | None:
++    """Fase en proceso; si ninguna lo está, la última iniciada. `fases` = [(fase, estado)] en el orden del catálogo."""
++    for fase, estado in fases:
+         if estado == "en_proceso":
+             return fase
+-    iniciadas = [f for f, estado, _ in filas if estado != "pendiente"]
++    iniciadas = [fase for fase, estado in fases if estado != "pendiente"]
+     return iniciadas[-1] if iniciadas else None
+ 
+ 
+-def parque_a_esquema(db: Session, parque: Parque) -> e.Parque:
+-    exp = expediente_actual(db, parque.id)
+-    datos: dict = dict(
+-        id=parque.id,
+-        tipo_registro=parque.tipo_registro,
+-        nombre=parque.nombre,
+-        desarrollador=nombre_desarrollador(db, parque.desarrollador_id),
+-        tipo_pi=tipo_vigente(db, parque.id),
+-        region=parque.region,
+-        estado=parque.estado,
+-        fecha_alta=parque.fecha_alta,
+-        fecha_ultimo_dictamen=parque.fecha_ultimo_dictamen,
+-        motivo_baja=parque.motivo_baja,
+-        contacto_principal_id=parque.contacto_principal_id,
+-        fecha_termino_programa=parque.fecha_termino_historico,
+-        atrasado_actualizacion=False,
+-    )
+-    if exp is not None:
+-        gen = generacion_de(db, exp)
+-        version = db.get(VersionCatalogo, gen.version_catalogo_id)
+-        asignacion = db.scalars(
+-            select(AsignacionConsultor).where(
+-                AsignacionConsultor.expediente_id == exp.id, AsignacionConsultor.vigente_hasta.is_(None)
+-            )
+-        ).first()
+-        ultima = db.scalar(
+-            select(func.max(ActualizacionAnual.fecha))
++@dataclass
++class _DatosDeParques:
++    """Lo necesario para armar la respuesta de varios parques, cargado con una consulta por dato."""
++
++    expedientes: dict[uuid.UUID, tuple[Expediente, Generacion]]  # por parque: expediente vigente y su generación
++    desarrolladores: dict[uuid.UUID, str]  # por desarrollador
++    tipos: dict[uuid.UUID, str]  # por parque: tipo de PI vigente
++    versiones: dict[uuid.UUID, str]  # por versión del catálogo
++    consultores: dict[uuid.UUID, uuid.UUID]  # por expediente: consultor con asignación vigente
++    ultimas: dict[uuid.UUID, date]  # por parque: fecha de la última actualización anual
++    fases: dict[uuid.UUID, list[tuple[str, str]]]  # por expediente: [(fase, estado)] en orden del catálogo
++
++
++def _cargar_datos_de_parques(db: Session, parques: Sequence[Parque]) -> _DatosDeParques:
++    """Siete consultas en total, sin importar cuántos parques sean."""
++    ids = [p.id for p in parques]
++    # Expediente vigente de cada parque: el de la generación más reciente (mismo criterio que expediente_actual).
++    expedientes = {
++        exp.parque_id: (exp, gen)
++        for exp, gen in db.execute(
++            select(Expediente, Generacion)
++            .join(Generacion, Generacion.id == Expediente.generacion_id)
++            .where(Expediente.parque_id.in_(ids))
++            .order_by(Expediente.parque_id, Generacion.fecha_inicio.desc(), Generacion.nombre.desc())
++            .distinct(Expediente.parque_id)
++        ).tuples()
++    }
++    ids_exp = [exp.id for exp, _ in expedientes.values()]
++    fases: dict[uuid.UUID, list[tuple[str, str]]] = defaultdict(list)
++    for exp_id, fase, estado in db.execute(
++        select(FaseExpediente.expediente_id, FaseExpediente.fase, FaseExpediente.estado)
++        .join(CatalogoFase, CatalogoFase.clave == FaseExpediente.fase)
++        .where(FaseExpediente.expediente_id.in_(ids_exp))
++        .order_by(FaseExpediente.expediente_id, CatalogoFase.orden)
++    ).tuples():
++        fases[exp_id].append((fase, estado))
++    return _DatosDeParques(
++        expedientes=expedientes,
++        desarrolladores=dict(db.execute(
++            select(Desarrollador.id, Desarrollador.nombre)
++            .where(Desarrollador.id.in_({p.desarrollador_id for p in parques if p.desarrollador_id}))
++        ).tuples().all()),
++        tipos=dict(db.execute(
++            select(ClasificacionTipoPI.parque_id, ClasificacionTipoPI.tipo_pi)
++            .where(ClasificacionTipoPI.parque_id.in_(ids), ClasificacionTipoPI.fecha_hasta.is_(None))
++        ).tuples().all()),
++        versiones=dict(db.execute(
++            select(VersionCatalogo.id, VersionCatalogo.nombre)
++            .where(VersionCatalogo.id.in_({gen.version_catalogo_id for _, gen in expedientes.values()}))
++        ).tuples().all()),
++        consultores=dict(db.execute(
++            select(AsignacionConsultor.expediente_id, AsignacionConsultor.consultor_id)
++            .where(AsignacionConsultor.expediente_id.in_(ids_exp), AsignacionConsultor.vigente_hasta.is_(None))
++        ).tuples().all()),
++        ultimas=dict(db.execute(
++            select(Expediente.parque_id, func.max(ActualizacionAnual.fecha))
+             .join(Expediente, Expediente.id == ActualizacionAnual.expediente_id)
+-            .where(Expediente.parque_id == parque.id)
+-        )
+-        datos.update(
+-            generacion_id=gen.id,
+-            fase=fase_actual(db, exp),
+-            version_catalogo=version.nombre if version else None,
+-            consultor_asignado_id=asignacion.consultor_id if asignacion else None,
+-            fecha_termino_programa=exp.fecha_termino_programa,
+-            fecha_proxima_actualizacion=exp.fecha_proxima_actualizacion,
+-            fecha_ultima_actualizacion=ultima,
+-            atrasado_actualizacion=bool(
+-                exp.fecha_proxima_actualizacion and exp.fecha_proxima_actualizacion < hoy()
++            .where(Expediente.parque_id.in_(ids))
++            .group_by(Expediente.parque_id)
++        ).tuples().all()),
++        fases=fases,
++    )
++
++
++def _armar_parque(parque: Parque, datos: _DatosDeParques, fecha_hoy: date) -> e.Parque:
++    """Respuesta de un parque a partir de datos ya cargados; no consulta la base."""
++    # dict[str, Any] como en la versión anterior: los modelos ORM tipan las columnas ENUM como str y mypy no
++    # aceptaría str donde el esquema pide Literal (ver clasificacion_problemas.md, grupo I-4).
++    campos: dict[str, Any] = {
++        "id": parque.id,
++        "tipo_registro": parque.tipo_registro,
++        "nombre": parque.nombre,
++        "desarrollador": datos.desarrolladores.get(parque.desarrollador_id) if parque.desarrollador_id else None,
++        "tipo_pi": datos.tipos.get(parque.id),
++        "region": parque.region,
++        "estado": parque.estado,
++        "fecha_alta": parque.fecha_alta,
++        "fecha_ultimo_dictamen": parque.fecha_ultimo_dictamen,
++        "motivo_baja": parque.motivo_baja,
++        "contacto_principal_id": parque.contacto_principal_id,
++        "fecha_termino_programa": parque.fecha_termino_historico,
++        "atrasado_actualizacion": False,
++    }
++    if parque.id in datos.expedientes:
++        exp, gen = datos.expedientes[parque.id]
++        campos.update({
++            "generacion_id": gen.id,
++            "fase": _fase_actual_de(datos.fases[exp.id]),
++            "version_catalogo": datos.versiones.get(gen.version_catalogo_id),
++            "consultor_asignado_id": datos.consultores.get(exp.id),
++            "fecha_termino_programa": exp.fecha_termino_programa,
++            "fecha_proxima_actualizacion": exp.fecha_proxima_actualizacion,
++            "fecha_ultima_actualizacion": datos.ultimas.get(parque.id),
++            "atrasado_actualizacion": bool(
++                exp.fecha_proxima_actualizacion and exp.fecha_proxima_actualizacion < fecha_hoy
+             ),
+-        )
+-    return e.Parque(**datos)
++        })
++    return e.Parque(**campos)
++
++
++def parques_a_esquema(db: Session, parques: Sequence[Parque]) -> list[e.Parque]:
++    """Respuesta de varios parques con un número fijo de consultas.
++
++    [R2, S09_A1] Antes cada parque costaba ocho consultas (expediente, desarrollador, tipo de PI, generación,
++    versión, asignación, última actualización y fases): GET /parques con 80 parques ejecutaba 643 sentencias.
++    Ahora la carga (_cargar_datos_de_parques) y el armado (_armar_parque) están separados: siete consultas para
++    todos los parques y el armado en memoria."""
++    if not parques:
++        return []
++    datos = _cargar_datos_de_parques(db, parques)
++    fecha_hoy = hoy()
++    return [_armar_parque(parque, datos, fecha_hoy) for parque in parques]
++
++
++def parque_a_esquema(db: Session, parque: Parque) -> e.Parque:
++    """Un solo parque: misma construcción que el listado, así las dos respuestas no pueden divergir."""
++    return parques_a_esquema(db, [parque])[0]
+ 
+ 
+ def clasificacion_a_esquema(c: ClasificacionTipoPI) -> e.ClasificacionTipoPI:

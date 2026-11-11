@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query, Response
 from sqlalchemy import func, select, update
 
 from app import esquemas as e
-from app.comun import DB, Actor, Paginacion, ahora, orden_sql, registrar_bitacora
+from app.comun import DB, Actor, Paginacion, ahora, exigir_campos, orden_sql, registrar_bitacora
 from app.config import get_settings
 from app.errores import ErrorAPI, no_encontrado
 from app.modelos import (
@@ -174,12 +174,7 @@ def obtener_usuario(usuarioId: uuid.UUID, db: DB):
 @router.patch("/usuarios/{usuarioId}", response_model=e.Usuario)
 def actualizar_usuario(usuarioId: uuid.UUID, cuerpo: e.UsuarioUpdate, db: DB, actor: Actor):
     u = _obtener_usuario(db, usuarioId)
-    campos = cuerpo.model_fields_set
-    if not campos:
-        raise ErrorAPI(422, "datos_invalidos", "Indique al menos un campo a actualizar")
-    for campo in ("nombre", "rol", "estado"):
-        if campo in campos and getattr(cuerpo, campo) is None:
-            raise ErrorAPI(422, "datos_invalidos", f"El campo {campo} no admite nulo")
+    campos = exigir_campos(cuerpo, ("nombre", "rol", "estado"))  # [R3] regla compartida con PATCH /parques
     baja = cuerpo.estado == "inactivo" and u.estado != "inactivo"
     if baja and not cuerpo.motivo:
         raise ErrorAPI(422, "motivo_requerido", "Indique el motivo de la baja del usuario")

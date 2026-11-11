@@ -1,0 +1,158 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /home/claude/work/Equipo19/backend/.venv/bin/python
+rootdir: /home/claude/work/Equipo19/backend
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1, platformdirs-4.14.5, cov-7.1.0
+collecting ... collected 91 items
+tests/test_auth.py::test_RF_03_AC_1_register_activa_cuenta_y_no_devuelve_contrasena PASSED [  1%]
+tests/test_auth.py::test_register_token_reusado_o_vencido_410_y_contrasena_corta_422 PASSED [  2%]
+tests/test_auth.py::test_RF_26_AC_1_login_entrega_jwt_con_expiracion_explicita PASSED [  3%]
+tests/test_auth.py::test_RF_26_AC_2_credenciales_incorrectas_401 PASSED  [  4%]
+tests/test_auth.py::test_RF_26_AC_3_bloqueo_tras_5_intentos PASSED       [  5%]
+tests/test_auth.py::test_me_con_token_valido_y_sin_token PASSED          [  6%]
+tests/test_auth.py::test_token_con_firma_invalida_401 PASSED             [  7%]
+tests/test_auth.py::test_token_expirado_401 PASSED                       [  8%]
+tests/test_auth.py::test_RF_26_AC_5_logout_invalida_token PASSED         [  9%]
+tests/test_auth.py::test_RF_26_AC_6_inactividad_de_60_minutos_401 PASSED [ 10%]
+tests/test_auth.py::test_usuario_dado_de_baja_pierde_acceso_inmediato PASSED [ 12%]
+tests/test_auth.py::test_secreto_de_ejemplo_rechazado PASSED             [ 13%]
+tests/test_auth.py::test_secreto_no_esta_en_el_codigo PASSED             [ 14%]
+tests/test_caracterizacion_s09.py::test_patch_parque_validaciones_del_cuerpo PASSED [ 15%]
+tests/test_caracterizacion_s09.py::test_patch_parque_datos_generales_y_bitacora PASSED [ 16%]
+tests/test_caracterizacion_s09.py::test_patch_parque_baja_una_sola_vez PASSED [ 17%]
+tests/test_caracterizacion_s09.py::test_patch_parque_historico PASSED    [ 18%]
+tests/test_caracterizacion_s09.py::test_patch_usuario_validaciones_del_cuerpo PASSED [ 19%]
+tests/test_caracterizacion_s09.py::test_listado_de_parques_campos_y_filtros PASSED [ 20%]
+tests/test_caracterizacion_s09.py::test_listado_usa_el_expediente_de_la_generacion_mas_reciente PASSED [ 21%]
+tests/test_catalogo_generaciones.py::test_RF_01_AC_1_carga_csv_crea_version_activa PASSED [ 23%]
+tests/test_catalogo_generaciones.py::test_RF_01_AC_4_marca_invalida_rechaza_archivo_completo PASSED [ 24%]
+tests/test_catalogo_generaciones.py::test_RF_01_AC_4_columna_faltante PASSED [ 25%]
+tests/test_catalogo_generaciones.py::test_version_duplicada_409 PASSED   [ 26%]
+tests/test_catalogo_generaciones.py::test_RF_01_AC_5_version_anterior_queda_en_solo_lectura PASSED [ 27%]
+tests/test_catalogo_generaciones.py::test_RF_24_AC_1_evidencia_suficiente_y_solo_lectura PASSED [ 28%]
+tests/test_catalogo_generaciones.py::test_RF_28_AC_1_crear_y_consultar_generacion PASSED [ 29%]
+tests/test_catalogo_generaciones.py::test_generacion_duplicada_y_version_inexistente PASSED [ 30%]
+tests/test_catalogo_generaciones.py::test_recursos_inexistentes_404 PASSED [ 31%]
+tests/test_expediente.py::test_RF_04_AC_1_solo_criterios_aplicables PASSED [ 32%]
+tests/test_expediente.py::test_RF_04_AC_2_autoevaluar_criterio_na PASSED [ 34%]
+tests/test_expediente.py::test_autoevaluacion_upsert_201_luego_200 PASSED [ 35%]
+tests/test_expediente.py::test_RF_08_cumplimiento_por_suma_de_criterios PASSED [ 36%]
+tests/test_expediente.py::test_RF_09_AC_1_AC_4_plan_de_trabajo PASSED    [ 37%]
+tests/test_expediente.py::test_RF_09_AC_2_atraso_en_listado PASSED       [ 38%]
+tests/test_expediente.py::test_RF_16_AC_1_revision_analisis_riesgos PASSED [ 39%]
+tests/test_expediente.py::test_parque_historico_sin_subrecursos PASSED   [ 40%]
+tests/test_expediente.py::test_plan_de_trabajo_no_admite_criterio_cumplido PASSED [ 41%]
+tests/test_fases_config_bitacora.py::test_RF_32_AC_1_nueve_fases_y_fase_actual PASSED [ 42%]
+tests/test_fases_config_bitacora.py::test_RF_32_cierre_de_fase PASSED    [ 43%]
+tests/test_fases_config_bitacora.py::test_RF_32_AC_4_AC_5_avance_por_excepcion PASSED [ 45%]
+tests/test_fases_config_bitacora.py::test_RF_06_AC_6_AC_7_configuracion PASSED [ 46%]
+tests/test_fases_config_bitacora.py::test_RF_35_AC_3_bitacora_filtrada_y_ordenada PASSED [ 47%]
+tests/test_fases_config_bitacora.py::test_RNF_03_bitacora_no_se_modifica PASSED [ 48%]
+tests/test_fases_config_bitacora.py::test_esquema_identico PASSED        [ 49%]
+tests/test_fases_config_bitacora.py::test_integridad_check_responde_422_y_unicidad_409 PASSED [ 50%]
+tests/test_humo.py::test_salud PASSED                                    [ 51%]
+tests/test_parques.py::test_RF_02_AC_1_alta_de_parque PASSED             [ 52%]
+tests/test_parques.py::test_RF_02_AC_2_tipo_pi_invalido PASSED           [ 53%]
+tests/test_parques.py::test_RF_02_AC_3_region_invalida PASSED            [ 54%]
+tests/test_parques.py::test_RF_28_AC_3_parque_sin_generacion PASSED      [ 56%]
+tests/test_parques.py::test_RF_31_AC_2_alta_parque_historico PASSED      [ 57%]
+tests/test_parques.py::test_listado_paginado_y_filtros PASSED            [ 58%]
+tests/test_parques.py::test_RF_30_AC_1_fechas_del_programa PASSED        [ 59%]
+tests/test_parques.py::test_RF_30_AC_2_y_AC_3_atraso_y_actualizacion_anual PASSED [ 60%]
+tests/test_parques.py::test_RF_29_AC_3_baja_de_parque PASSED             [ 61%]
+tests/test_parques.py::test_RF_11_AC_1_AC_4_cambio_de_tipo_recalcula PASSED [ 62%]
+tests/test_parques.py::test_RF_11_AC_3_AC_5_validaciones PASSED          [ 63%]
+tests/test_parques.py::test_RF_31_AC_1_historial PASSED                  [ 64%]
+tests/test_parques.py::test_D_17_RF_14_AC_8_historial_con_no_otorgar_sin_sesion PASSED [ 65%]
+tests/test_parques.py::test_D_19_criterio_que_vuelve_a_aplicar_deja_historial PASSED [ 67%]
+tests/test_permisos.py::test_toda_ruta_protegida_responde_401_sin_token PASSED [ 68%]
+tests/test_permisos.py::test_toda_ruta_protegida_responde_401_con_token_alterado PASSED [ 69%]
+tests/test_permisos.py::test_rutas_publicas_no_piden_token PASSED        [ 70%]
+tests/test_permisos.py::test_rol_incorrecto_403_y_rol_correcto_201 PASSED [ 71%]
+tests/test_permisos.py::test_solo_coordinacion[/api/usuarios-POST-cuerpo0] PASSED [ 72%]
+tests/test_permisos.py::test_solo_coordinacion[/api/configuracion-PATCH-cuerpo1] PASSED [ 73%]
+tests/test_permisos.py::test_solo_coordinacion[/api/bitacora-GET-None] PASSED [ 74%]
+tests/test_permisos.py::test_solo_coordinacion[/api/generaciones-POST-cuerpo3] PASSED [ 75%]
+tests/test_permisos.py::test_RNF_01_aislamiento_entre_parques PASSED     [ 76%]
+tests/test_permisos.py::test_RF_10_AC_2_reasignacion_retira_acceso_de_inmediato PASSED [ 78%]
+tests/test_permisos.py::test_RF_04_solo_la_appi_autoevalua PASSED        [ 79%]
+tests/test_permisos.py::test_RF_16_AC_1_revisiones_ar_no_visibles_para_coordinacion PASSED [ 80%]
+tests/test_permisos.py::test_RF_35_AC_4_bitacora_solo_coordinacion PASSED [ 81%]
+tests/test_permisos.py::test_RF_35_AC_2_el_403_queda_en_bitacora PASSED  [ 82%]
+tests/test_permisos.py::test_P_01_gerente_solo_ve_el_avance_de_sus_parques PASSED [ 83%]
+tests/test_permisos.py::test_P_02_alta_inicial_de_coordinacion PASSED    [ 84%]
+tests/test_refactorizacion_s09.py::test_R1_dos_altas_simultaneas_con_el_mismo_desarrollador_nuevo FAILED [ 85%]
+tests/test_refactorizacion_s09.py::test_R2_el_listado_de_parques_no_hace_consultas_por_parque FAILED [ 86%]
+tests/test_semilla.py::test_semilla_demo_dos_veces PASSED                [ 87%]
+tests/test_usuarios_asignaciones.py::test_RF_03_AC_1_alta_pendiente_con_invitacion PASSED [ 89%]
+tests/test_usuarios_asignaciones.py::test_correo_duplicado_sin_mayusculas PASSED [ 90%]
+tests/test_usuarios_asignaciones.py::test_RF_03_AC_3_administrador_tecnico_sin_parque PASSED [ 91%]
+tests/test_usuarios_asignaciones.py::test_appi_sin_parque_o_parque_inexistente PASSED [ 92%]
+tests/test_usuarios_asignaciones.py::test_listado_y_actualizacion_de_usuario PASSED [ 93%]
+tests/test_usuarios_asignaciones.py::test_RF_29_AC_1_baja_de_consultor_cierra_asignaciones PASSED [ 94%]
+tests/test_usuarios_asignaciones.py::test_RF_10_AC_1_AC_2_asignar_y_reasignar PASSED [ 95%]
+tests/test_usuarios_asignaciones.py::test_asignar_usuario_que_no_es_consultor PASSED [ 96%]
+tests/test_usuarios_asignaciones.py::test_RF_34_AC_1_AC_2_contacto_principal PASSED [ 97%]
+tests/test_usuarios_asignaciones.py::test_RF_34_AC_3_baja_del_contacto_deja_parque_sin_contacto PASSED [ 98%]
+tests/test_usuarios_asignaciones.py::test_no_se_asigna_consultor_a_parque_dado_de_baja PASSED [100%]
+=================================== FAILURES ===================================
+________ test_R1_dos_altas_simultaneas_con_el_mismo_desarrollador_nuevo ________
+bd = None
+    def test_R1_dos_altas_simultaneas_con_el_mismo_desarrollador_nuevo(bd):
+        """CR-04. Dos solicitudes dan de alta parques del mismo desarrollador, que todavía no existe. La primera inserta
+        el desarrollador y aún no confirma; la segunda no lo ve, intenta insertarlo y espera el índice único. Cuando la
+        primera confirma, el código original lanzaba IntegrityError y la API respondía 409 a un alta válida."""
+        from app.db import SessionLocal
+        from app.servicios import obtener_o_crear_desarrollador
+    
+        primera, segunda = SessionLocal(), SessionLocal()
+        resultado: dict = {}
+    
+        def alta_concurrente():
+            try:
+                resultado["id"] = obtener_o_crear_desarrollador(segunda, "Desarrolladora Nueva").id
+                segunda.commit()
+            except Exception as exc:  # noqa: BLE001 - se reporta en la aserción
+                segunda.rollback()
+                resultado["error"] = exc
+    
+        try:
+            creado = obtener_o_crear_desarrollador(primera, "Desarrolladora Nueva")
+            hilo = threading.Thread(target=alta_concurrente)
+            hilo.start()
+            _esperar_bloqueo()
+            primera.commit()
+            hilo.join(timeout=10)
+            assert not hilo.is_alive()
+>           assert "error" not in resultado, f"la segunda alta falló: {resultado.get('error')!r}"
+E           AssertionError: la segunda alta falló: IntegrityError('(psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "uq_desarrollador_nombre"\nDETAIL:  Key (nombre)=(Desarrolladora Nueva) already exists.')
+E           assert 'error' not in {'error': IntegrityError('(psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "uq_desarrollador_nombre"\nDETAIL:  Key (nombre)=(Desarrolladora Nueva) already exists.')}
+tests/test_refactorizacion_s09.py:54: AssertionError
+__________ test_R2_el_listado_de_parques_no_hace_consultas_por_parque __________
+cliente = <starlette.testclient.TestClient object at 0x7f4f48605e50>
+    def test_R2_el_listado_de_parques_no_hace_consultas_por_parque(cliente):
+        """CR-03 y RNF-10. El número de sentencias SQL de GET /parques no debe crecer con el número de parques."""
+        v = cargar_catalogo(cliente)
+        g = crear_generacion(cliente, v["id"])
+        for i in range(2):
+            crear_parque(cliente, g["id"], nombre=f"Parque {i:02d}")
+        con_2, total = _consultas_del_listado(cliente)
+        assert total == 2
+        for i in range(2, 12):
+            crear_parque(cliente, g["id"], nombre=f"Parque {i:02d}")
+        con_12, total = _consultas_del_listado(cliente)
+        assert total == 12
+>       assert con_12 == con_2, f"GET /parques hizo {con_2} consultas con 2 parques y {con_12} con 12"
+E       AssertionError: GET /parques hizo 19 consultas con 2 parques y 99 con 12
+E       assert 99 == 19
+tests/test_refactorizacion_s09.py:92: AssertionError
+=============================== warnings summary ===============================
+tests/test_auth.py::test_RF_03_AC_1_register_activa_cuenta_y_no_devuelve_contrasena
+  /home/claude/work/Equipo19/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_refactorizacion_s09.py::test_R1_dos_altas_simultaneas_con_el_mismo_desarrollador_nuevo
+FAILED tests/test_refactorizacion_s09.py::test_R2_el_listado_de_parques_no_hace_consultas_por_parque
+=================== 2 failed, 89 passed, 1 warning in 38.80s ===================

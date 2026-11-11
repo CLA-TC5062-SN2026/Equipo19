@@ -1,0 +1,19 @@
+Medición de GET /parques después de R2 (commit 4fe35f1)
+Comando: uv run pytest tests/medicion_s09.py -s -q   (PostgreSQL 16 local; listado completo, tamanoPagina=100)
+Tres corridas; cada valor de tiempo es la mediana de 21 llamadas.
+
+parques | sentencias SQL | mediana ms (21 llamadas)
+-- corrida 1 --
+     10 |             10 |       22.7
+     41 |             10 |       33.6
+     80 |             10 |       40.6
+-- corrida 2 --
+     10 |             10 |       23.0
+     41 |             10 |       32.5
+     80 |             10 |       51.8
+-- corrida 3 --
+     10 |             10 |       24.2
+     41 |             10 |       31.4
+     80 |             10 |       45.8
+
+Promedio de las tres corridas: 41 parques = 32.5 ms; 80 parques = 46.1 ms; crecimiento de 41 a 80 = +42 % (rango +21 % a +59 %)

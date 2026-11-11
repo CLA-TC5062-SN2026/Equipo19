@@ -1,0 +1,524 @@
+# Análisis estático del backend de SGPIS (equipo 19)
+# Fecha: 2026-11-11 11:29 CST
+# Commit: 441f2c0
+# Herramientas: pylint 4.1.3 | flake8 7.5.0 | mypy 2.4.1 (compiled: yes) | bandit 1.9.4
+# Configuración: pyproject.toml ([tool.pylint], [tool.mypy], [tool.pydantic-mypy]) y .flake8
+# Alcance: paquete app/ (código de la API). tests/ queda fuera del análisis.
+
+================================================================================
+1. PYLINT   (uv run pylint app)
+================================================================================
+************* Module app.permisos
+app/permisos.py:294:0: C0301: Line too long (121/120) (line-too-long)
+************* Module app.errores
+app/errores.py:39:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/errores.py:43:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/errores.py:119:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.comun
+app/comun.py:22:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:31:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:47:0: C0115: Missing class docstring (missing-class-docstring)
+app/comun.py:53:4: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:57:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:65:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:93:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:114:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/comun.py:129:0: R0913: Too many arguments (8/5) (too-many-arguments)
+************* Module app.config
+app/config.py:9:0: C0115: Missing class docstring (missing-class-docstring)
+app/config.py:38:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.esquemas
+app/esquemas.py:32:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:39:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:47:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:52:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:58:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:65:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:75:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:82:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:95:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:100:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:106:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:116:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:125:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:136:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:146:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:168:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:174:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:185:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:194:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:199:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:209:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:217:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:226:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:238:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:243:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:248:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:256:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:264:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:268:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:273:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:277:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:289:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:304:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:309:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:321:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:332:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:336:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:345:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:351:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:356:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:369:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:376:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:389:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:401:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:407:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:414:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:421:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:435:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:448:0: C0115: Missing class docstring (missing-class-docstring)
+app/esquemas.py:463:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module app.semilla
+app/semilla.py:59:0: C0301: Line too long (135/120) (line-too-long)
+app/semilla.py:68:0: C0301: Line too long (122/120) (line-too-long)
+app/semilla.py:50:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/semilla.py:50:0: R0914: Too many local variables (18/15) (too-many-locals)
+************* Module app.alta_inicial
+app/alta_inicial.py:25:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/alta_inicial.py:33:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/alta_inicial.py:34:44: C0207: Use __doc__.split('\n', maxsplit=1)[0] instead (use-maxsplit-arg)
+************* Module app.servicios
+app/servicios.py:38:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:64:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:72:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:77:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:87:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:94:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:98:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:104:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:117:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:131:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:133:18: R1735: Consider using '{"id": parque.id, "tipo_registro": parque.tipo_registro, "nombre": parque.nombre, ... }' instead of a call to 'dict'. (use-dict-literal)
+app/servicios.py:176:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:197:0: C0115: Missing class docstring (missing-class-docstring)
+app/servicios.py:228:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:273:11: R1735: Consider using '{"obligatorios_aplicables": oa, "obligatorios_cumplidos": oc, "recomendados_aplicables": ra, ... }' instead of a call to 'dict'. (use-dict-literal)
+app/servicios.py:304:20: R1735: Consider using '{"estandar": n, **_cifras(*conteo[n])}' instead of a call to 'dict'. (use-dict-literal)
+app/servicios.py:308:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/servicios.py:320:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.modelos
+app/modelos.py:62:0: C0103: Constant name "RolEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:63:0: C0103: Constant name "TipoPIEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:64:0: C0103: Constant name "MarcaEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:65:0: C0103: Constant name "EstadoCalificacionEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:66:0: C0103: Constant name "EstadoVinculoEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:67:0: C0103: Constant name "CategoriaEvidenciaEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:68:0: C0103: Constant name "EstadoFaseEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:69:0: C0103: Constant name "TipoDictamenEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:70:0: C0103: Constant name "EstadoDictamenEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:71:0: C0103: Constant name "RespuestaAutoevaluacionEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:72:0: C0103: Constant name "EstadoUsuarioEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:73:0: C0103: Constant name "EstadoParqueEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:74:0: C0103: Constant name "TipoOpinionEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:75:0: C0103: Constant name "RegionEnum" doesn't conform to UPPER_CASE naming style (invalid-name)
+app/modelos.py:88:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:93:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:99:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:114:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:124:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:135:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:142:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:152:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:161:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:169:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:177:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:189:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:198:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:206:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:214:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:230:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:244:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:253:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:266:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:275:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:285:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:296:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:321:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:333:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:347:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:356:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:368:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:378:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:388:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:400:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:413:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:426:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:437:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:464:0: C0115: Missing class docstring (missing-class-docstring)
+app/modelos.py:478:0: C0115: Missing class docstring (missing-class-docstring)
+************* Module app.db
+app/db.py:11:0: C0103: Constant name "SessionLocal" doesn't conform to UPPER_CASE naming style (invalid-name)
+************* Module app.seguridad
+app/seguridad.py:39:0: C0115: Missing class docstring (missing-class-docstring)
+app/seguridad.py:44:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/seguridad.py:75:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/seguridad.py:89:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/seguridad.py:93:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/seguridad.py:116:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/seguridad.py:177:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.routers.autenticacion
+app/routers/autenticacion.py:40:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autenticacion.py:89:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autenticacion.py:142:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autenticacion.py:153:0: C0116: Missing function or method docstring (missing-function-docstring)
+************* Module app.routers.operacion
+app/routers/operacion.py:21:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/operacion.py:29:11: W0718: Catching too general exception Exception (broad-exception-caught)
+************* Module app.routers.analisis_riesgos
+app/routers/analisis_riesgos.py:40:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/analisis_riesgos.py:40:39: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/analisis_riesgos.py:54:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/analisis_riesgos.py:55:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/analisis_riesgos.py:80:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/analisis_riesgos.py:80:38: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/analisis_riesgos.py:80:59: C0103: Argument name "revisionId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.plan_trabajo
+app/routers/plan_trabajo.py:65:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/plan_trabajo.py:66:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:85:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/plan_trabajo.py:86:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:122:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/plan_trabajo.py:122:33: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:122:54: C0103: Argument name "renglonId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:129:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/plan_trabajo.py:130:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:130:25: C0103: Argument name "renglonId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:154:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/plan_trabajo.py:154:34: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:154:55: C0103: Argument name "renglonId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/plan_trabajo.py:156:11: W0612: Unused variable 'cp' (unused-variable)
+************* Module app.routers.usuarios
+app/routers/usuarios.py:244:0: C0301: Line too long (121/120) (line-too-long)
+app/routers/usuarios.py:102:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:135:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:170:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:170:20: C0103: Argument name "usuarioId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/usuarios.py:175:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:175:23: C0103: Argument name "usuarioId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/usuarios.py:175:0: R0912: Too many branches (16/12) (too-many-branches)
+app/routers/usuarios.py:241:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:241:27: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/usuarios.py:250:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/usuarios.py:250:29: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.generaciones
+app/routers/generaciones.py:31:0: C0301: Line too long (122/120) (line-too-long)
+app/routers/generaciones.py:30:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/generaciones.py:35:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/generaciones.py:51:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/generaciones.py:51:23: C0103: Argument name "generacionId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.autoevaluacion
+app/routers/autoevaluacion.py:32:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autoevaluacion.py:33:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/autoevaluacion.py:50:12: R1721: Unnecessary use of a comprehension, use list(db.execute(q).all()) instead. (unnecessary-comprehension)
+app/routers/autoevaluacion.py:64:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autoevaluacion.py:64:27: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/autoevaluacion.py:64:48: C0103: Argument name "criterioId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/autoevaluacion.py:77:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/autoevaluacion.py:78:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/autoevaluacion.py:78:25: C0103: Argument name "criterioId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/autoevaluacion.py:77:0: R0913: Too many arguments (6/5) (too-many-arguments)
+app/routers/autoevaluacion.py:77:0: R0917: Too many positional arguments (6/5) (too-many-positional-arguments)
+app/routers/autoevaluacion.py:13:0: W0611: Unused generacion_de imported from app.servicios (unused-import)
+************* Module app.routers.cumplimiento
+app/routers/cumplimiento.py:16:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/cumplimiento.py:16:32: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.criterios_parque
+app/routers/criterios_parque.py:57:0: C0301: Line too long (121/120) (line-too-long)
+app/routers/criterios_parque.py:17:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/criterios_parque.py:18:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/criterios_parque.py:17:0: R0913: Too many arguments (7/5) (too-many-arguments)
+app/routers/criterios_parque.py:17:0: R0917: Too many positional arguments (7/5) (too-many-positional-arguments)
+app/routers/criterios_parque.py:53:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/criterios_parque.py:53:28: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/criterios_parque.py:53:49: C0103: Argument name "criterioId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.historial
+app/routers/historial.py:55:0: C0301: Line too long (138/120) (line-too-long)
+app/routers/historial.py:56:0: C0301: Line too long (144/120) (line-too-long)
+app/routers/historial.py:26:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/historial.py:26:29: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.catalogo
+app/routers/catalogo.py:122:0: C0301: Line too long (121/120) (line-too-long)
+app/routers/catalogo.py:54:8: W0707: Consider explicitly re-raising using 'except UnicodeDecodeError as exc' and 'raise ErrorAPI(422, 'catalogo_invalido', 'El archivo no está codificado en UTF-8') from exc' (raise-missing-from)
+app/routers/catalogo.py:49:0: R0912: Too many branches (16/12) (too-many-branches)
+app/routers/catalogo.py:107:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/catalogo.py:113:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/catalogo.py:171:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/catalogo.py:171:29: C0103: Argument name "versionId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/catalogo.py:201:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/catalogo.py:201:21: C0103: Argument name "criterioId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/catalogo.py:210:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/catalogo.py:210:24: C0103: Argument name "criterioId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.asignaciones
+app/routers/asignaciones.py:32:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/asignaciones.py:32:34: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/asignaciones.py:44:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/asignaciones.py:45:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/asignaciones.py:86:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/asignaciones.py:86:33: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/asignaciones.py:86:54: C0103: Argument name "asignacionId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.fases
+app/routers/fases.py:30:23: W0613: Unused argument 'db' (unused-argument)
+app/routers/fases.py:38:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/fases.py:38:24: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/fases.py:44:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/fases.py:44:16: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/fases.py:66:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/fases.py:66:22: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.bitacora
+app/routers/bitacora.py:41:0: C0301: Line too long (122/120) (line-too-long)
+app/routers/bitacora.py:18:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/bitacora.py:18:0: R0913: Too many arguments (7/5) (too-many-arguments)
+app/routers/bitacora.py:18:0: R0917: Too many positional arguments (7/5) (too-many-positional-arguments)
+************* Module app.routers.parques
+app/routers/parques.py:101:0: C0301: Line too long (122/120) (line-too-long)
+app/routers/parques.py:39:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:39:0: R0913: Too many arguments (7/5) (too-many-arguments)
+app/routers/parques.py:39:0: R0917: Too many positional arguments (7/5) (too-many-positional-arguments)
+app/routers/parques.py:73:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:116:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:116:28: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:121:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:121:22: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:121:0: R0912: Too many branches (20/12) (too-many-branches)
+app/routers/parques.py:183:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:183:23: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:183:0: R0914: Too many local variables (19/15) (too-many-locals)
+app/routers/parques.py:259:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:259:20: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:277:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:278:4: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:297:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/parques.py:297:32: C0103: Argument name "parqueId" doesn't conform to snake_case naming style (invalid-name)
+app/routers/parques.py:297:53: C0103: Argument name "actualizacionId" doesn't conform to snake_case naming style (invalid-name)
+************* Module app.routers.configuracion
+app/routers/configuracion.py:51:0: C0301: Line too long (123/120) (line-too-long)
+app/routers/configuracion.py:54:0: C0301: Line too long (121/120) (line-too-long)
+app/routers/configuracion.py:32:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/configuracion.py:39:0: C0116: Missing function or method docstring (missing-function-docstring)
+app/routers/configuracion.py:1:0: R0801: Similar lines in 2 files
+==app.permisos:[144:150]
+==app.routers.usuarios:[51:57]
+        .join(Expediente, Expediente.id == AsignacionConsultor.expediente_id)
+        .where(
+            AsignacionConsultor.consultor_id == usuario_id,
+            AsignacionConsultor.vigente_hasta.is_(None),
+            Expediente.parque_id == parque_id,
+        ) (duplicate-code)
+
+-----------------------------------
+Your code has been rated at 8.83/10
+
+
+================================================================================
+2. FLAKE8   (uv run flake8 app --statistics --count)
+================================================================================
+app/errores.py:119:1: C901 'registrar_handlers' is too complex (11)
+app/permisos.py:294:121: E501 line too long (121 > 120 characters)
+app/routers/autoevaluacion.py:13:1: F401 'app.servicios.generacion_de' imported but unused
+app/routers/bitacora.py:41:121: E501 line too long (122 > 120 characters)
+app/routers/catalogo.py:49:1: C901 '_leer_csv' is too complex (18)
+app/routers/catalogo.py:122:121: E501 line too long (121 > 120 characters)
+app/routers/configuracion.py:51:121: E501 line too long (123 > 120 characters)
+app/routers/configuracion.py:54:121: E501 line too long (121 > 120 characters)
+app/routers/criterios_parque.py:57:121: E501 line too long (121 > 120 characters)
+app/routers/generaciones.py:31:121: E501 line too long (122 > 120 characters)
+app/routers/historial.py:55:121: E501 line too long (138 > 120 characters)
+app/routers/historial.py:56:121: E501 line too long (144 > 120 characters)
+app/routers/parques.py:101:121: E501 line too long (122 > 120 characters)
+app/routers/parques.py:121:1: C901 'actualizar_parque' is too complex (20)
+app/routers/usuarios.py:175:1: C901 'actualizar_usuario' is too complex (16)
+app/routers/usuarios.py:244:121: E501 line too long (121 > 120 characters)
+app/semilla.py:59:121: E501 line too long (135 > 120 characters)
+app/semilla.py:68:121: E501 line too long (122 > 120 characters)
+app/semilla.py:83:54: E127 continuation line over-indented for visual indent
+4     C901 'registrar_handlers' is too complex (11)
+1     E127 continuation line over-indented for visual indent
+13    E501 line too long (121 > 120 characters)
+1     F401 'app.servicios.generacion_de' imported but unused
+19
+
+================================================================================
+3. MYPY     (uv run mypy)   [archivos y opciones en pyproject.toml]
+================================================================================
+app/servicios.py:126: error: Returning Any from function declared to return
+"str | None"  [no-any-return]
+                return fase
+                ^~~~~~~~~~~
+app/servicios.py:232: error: Need type annotation for "evidencias" (hint:
+"evidencias: dict[<type>, <type>] = ...")  [var-annotated]
+        evidencias = dict(
+        ^~~~~~~~~~
+app/servicios.py:233: error: Argument 1 to "dict" has incompatible type
+"Sequence[Row[tuple[UUID, int]]]"; expected "Iterable[tuple[Never, Never]]" 
+[arg-type]
+            db.execute(
+            ^~~~~~~~~~~
+app/servicios.py:245: error: Need type annotation for "nombres" (hint:
+"nombres: dict[<type>, <type>] = ...")  [var-annotated]
+        nombres = (
+        ^~~~~~~
+app/servicios.py:246: error: Argument 1 to "dict" has incompatible type
+"Sequence[Row[tuple[UUID, str]]]"; expected "Iterable[tuple[Never, Never]]" 
+[arg-type]
+            dict(db.execute(select(Usuario.id, Usuario.nombre).where(Usuar...
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+app/servicios.py:256: error: Argument "marca" to "CriterioParque" has
+incompatible type "str | None"; expected "Literal['O', 'R']"  [arg-type]
+                marca=f.marca,
+                      ^~~~~~~
+app/routers/operacion.py:35: error: Argument "base_datos" to "Salud" has
+incompatible type "str"; expected "Literal['ok', 'sin_respuesta']"  [arg-type]
+            base_datos=base,
+                       ^~~~
+app/routers/configuracion.py:19: error: Returning Any from function declared to
+return "Configuracion"  [no-any-return]
+        return conf
+        ^~~~~~~~~~~
+app/permisos.py:312: error: Item "None" of "set[str] | None" has no attribute
+"__iter__" (not iterable)  [union-attr]
+            for metodo in ruta.methods:
+                          ^~~~~~~~~~~~
+app/routers/usuarios.py:36: error: Returning Any from function declared to
+return "Usuario"  [no-any-return]
+        return u
+        ^~~~~~~~
+app/routers/usuarios.py:45: error: Returning Any from function declared to
+return "Parque"  [no-any-return]
+        return parque
+        ^~~~~~~~~~~~~
+app/routers/plan_trabajo.py:26: error: Returning Any from function declared to
+return "Usuario"  [no-any-return]
+        return u
+        ^~~~~~~~
+app/routers/autoevaluacion.py:97: error: Item "None" of "Autoevaluacion | None"
+has no attribute "respuesta"  [union-attr]
+        a.respuesta = cuerpo.respuesta
+        ^~~~~~~~~~~
+app/routers/autoevaluacion.py:98: error: Item "None" of "Autoevaluacion | None"
+has no attribute "comentario"  [union-attr]
+        a.comentario = cuerpo.comentario
+        ^~~~~~~~~~~~
+app/routers/autoevaluacion.py:99: error: Item "None" of "Autoevaluacion | None"
+has no attribute "fecha"  [union-attr]
+        a.fecha = ahora()
+        ^~~~~~~
+app/routers/autoevaluacion.py:100: error: Item "None" of
+"Autoevaluacion | None" has no attribute "registrado_por"  [union-attr]
+        a.registrado_por = actor.id
+        ^~~~~~~~~~~~~~~~
+app/routers/autoevaluacion.py:104: error: Item "None" of
+"Autoevaluacion | None" has no attribute "id"  [union-attr]
+    ...       recurso_tipo="autoevaluacion", recurso_id=a.id, parque_id=parqu...
+                                                        ^~~~
+app/routers/autoevaluacion.py:110: error: Argument 1 to "_a_esquema" has
+incompatible type "Autoevaluacion | None"; expected "Autoevaluacion"  [arg-type]
+        return _a_esquema(a, exp, version_de(db, exp).nombre)
+                          ^
+app/routers/autenticacion.py:85: error: Returning Any from function declared to
+return "IntentoLogin"  [no-any-return]
+        return db.scalars(select(IntentoLogin).where(IntentoLogin.correo =...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+app/routers/analisis_riesgos.py:24: error: Returning Any from function declared
+to return "UUID | None"  [no-any-return]
+        return db.scalar(
+        ^~~~~~~~~~~~~~~~~
+app/routers/analisis_riesgos.py:91: error: Argument 2 to "_id_vigente" has
+incompatible type "Expediente | None"; expected "Expediente"  [arg-type]
+    ... return _a_esquema(r, parque.id, _id_vigente(db, exp) if exp.id == act...
+                                                        ^~~
+app/routers/analisis_riesgos.py:91: error: Item "None" of "Expediente | None"
+has no attribute "id"  [union-attr]
+    ..._a_esquema(r, parque.id, _id_vigente(db, exp) if exp.id == actual.id e...
+                                                        ^~~~~~
+app/routers/historial.py:44: error: Need type annotation for "nombres_version"
+(hint: "nombres_version: dict[<type>, <type>] = ...")  [var-annotated]
+        nombres_version = dict(db.execute(select(VersionCatalogo.id, Versi...
+        ^~~~~~~~~~~~~~~
+app/routers/historial.py:44: error: Argument 1 to "dict" has incompatible type
+"Sequence[Row[tuple[UUID, str]]]"; expected "Iterable[tuple[Never, Never]]" 
+[arg-type]
+        nombres_version = dict(db.execute(select(VersionCatalogo.id, Versi...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+app/routers/historial.py:53: error: Argument "tipo" to "OpinionCumplimiento"
+has incompatible type "str"; expected "Literal['intermedia', 'final']" 
+[arg-type]
+    ...e_id=parque.id, generacion_id=gen_de[o.expediente_id].id, tipo=o.tipo,
+                                                                      ^~~~~~
+app/routers/historial.py:65: error: Argument "tipo" to "Dictamen" has
+incompatible type "str"; expected "Literal['otorgar', 'no_otorgar']"  [arg-type]
+    ...       sesion_comite_id=d.sesion_comite_id, tipo=d.tipo, motivo=d.moti...
+                                                        ^~~~~~
+app/routers/historial.py:65: error: Argument "estado" to "Dictamen" has
+incompatible type "str"; expected "Literal['borrador', 'firmado']"  [arg-type]
+    ..._id=d.sesion_comite_id, tipo=d.tipo, motivo=d.motivo, estado=d.estado,
+                                                                    ^~~~~~~~
+app/routers/catalogo.py:45: error: Argument "estado" to "VersionCatalogo" has
+incompatible type "str"; expected "Literal['activa', 'solo_lectura']" 
+[arg-type]
+            estado=v.estado,
+                   ^~~~~~~~
+app/semilla.py:85: error: Argument 2 to "crear_invitacion" has incompatible
+type "Usuario | None"; expected "Usuario"  [arg-type]
+                token = crear_invitacion(db, db.get(Usuario, appi_id))
+                                             ^~~~~~~~~~~~~~~~~~~~~~~~
+app/semilla.py:107: error: Argument 2 to "crear_invitacion" has incompatible
+type "Usuario | None"; expected "Usuario"  [arg-type]
+            token = crear_invitacion(db, db.get(Usuario, coord_demo_id))
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 30 errors in 12 files (checked 30 source files)
+
+================================================================================
+4. BANDIT   (uv run bandit -r app)   [complemento de seguridad]
+================================================================================
+[main]	INFO	profile include tests: None
+[main]	INFO	profile exclude tests: None
+[main]	INFO	cli include tests: None
+[main]	INFO	cli exclude tests: None
+[main]	INFO	running on Python 3.12.3
+Run started:2026-11-11 17:29:51.322655+00:00
+
+Test results:
+>> Issue: [B106:hardcoded_password_funcarg] Possible hardcoded password: 'Bearer'
+   Severity: Low   Confidence: Medium
+   CWE: CWE-259 (https://cwe.mitre.org/data/definitions/259.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b106_hardcoded_password_funcarg.html
+   Location: app/routers/autenticacion.py:133:11
+132	        token=token,
+133	        tipo_token="Bearer",
+134	        expira_en=expira,
+135	        expira_por_inactividad_min=INACTIVIDAD_MIN,
+136	        usuario=usuario_a_esquema(db, u),
+137	    )
+138	
+139	
+140	# ------------------------------------------------------------------ sesión actual y cierre
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 3530
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 1
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 1
+		High: 0
+Files skipped (0):
