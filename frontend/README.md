@@ -8,10 +8,12 @@ está en `../S07_S08_A1/decision_stack_frontend.md`.
 Con el backend corriendo en `localhost:8000` (ver `../README.md`):
 
 ```bash
-cp .env.example .env     # VITE_API_URL=http://localhost:8000/api
+cp .env.example .env
 npm install
-npm run dev              # http://localhost:5173
+npm run dev
 ```
+
+`.env` trae `VITE_API_URL=http://localhost:8000/api`. El frontend queda en http://localhost:5173.
 
 ## Pantallas
 

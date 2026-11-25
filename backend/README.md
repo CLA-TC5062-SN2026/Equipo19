@@ -5,10 +5,12 @@ API REST de `openapi_equipo.yaml` v2.0.0 con FastAPI, SQLAlchemy 2.0 y PostgreSQ
 ## Levantar con Docker
 
 ```bash
-cp .env.example .env        # cambiar POSTGRES_PASSWORD, JWT_SECRET y las contraseñas de la semilla
+cp .env.example .env
 docker compose up --build
 curl http://localhost:8000/api/salud
 ```
+
+Antes de `docker compose up`, cambia en `.env` `POSTGRES_PASSWORD`, `JWT_SECRET` y las contraseñas de la semilla.
 
 `db` carga `db/esquema_bd.sql` desde `/docker-entrypoint-initdb.d/` solo la primera vez (volumen vacío). Para recrear la base: `docker compose down -v`.
 
@@ -33,16 +35,16 @@ El comando muestra un token de invitación una sola vez; la contraseña se fija 
 ## Datos de arranque (solo desarrollo)
 
 ```bash
-uv run python -m app.semilla          # catálogo sintético y generación 2027
-uv run python -m app.semilla --demo   # además, APPI de demostración e invitación para el video de A2
+uv run python -m app.semilla
+uv run python -m app.semilla --demo
 ```
 
-Usa `SEMILLA_CORREO`, `SEMILLA_CONTRASENA` y `SEMILLA_APPI_CONTRASENA` del `.env`. Es idempotente.
+La primera carga el catálogo sintético y la generación 2027. Con `--demo` agrega la APPI de demostración y la invitación para el video de A2. Usa `SEMILLA_CORREO`, `SEMILLA_CONTRASENA` y `SEMILLA_APPI_CONTRASENA` del `.env`. Es idempotente.
 
 Para la demo de S11, después de la semilla:
 
 ```bash
-uv run --env-file .env python -m app.demo_s11   # generación 2026: 8 parques, consultores, APPI, gerente, avance
+uv run --env-file .env python -m app.demo_s11
 ```
 
 Crea los datos con la API, como lo haría Coordinación o el consultor, salvo la calificación de criterios: RF-27 no
@@ -63,8 +65,10 @@ Necesitan un PostgreSQL 16 local con un usuario que pueda crear bases (por defec
 
 ```bash
 uv sync
-uv run pytest            # 105 pruebas
+uv run pytest
 ```
+
+Resultado esperado: 105 pruebas aprobadas.
 
 Con la base del `docker compose` basta apuntar al usuario del contenedor, que puede crear bases:
 `SGPIS_TEST_ADMIN_URL="postgresql://sgpis:<POSTGRES_PASSWORD>@localhost:5432/postgres" uv run pytest`.
@@ -73,10 +77,12 @@ Con la base del `docker compose` basta apuntar al usuario del contenedor, que pu
 ## Calidad de código (S09_A1)
 
 ```bash
-bash scripts/calidad.sh               # pylint, flake8, mypy y bandit; configuración en pyproject.toml y .flake8
+bash scripts/calidad.sh
 uv run pytest --cov=app --cov-report=term-missing
-uv run pytest tests/medicion_s09.py -s -q   # sentencias SQL y tiempos de GET /parques con 10, 41 y 80 parques
+uv run pytest tests/medicion_s09.py -s -q
 ```
+
+`calidad.sh` corre pylint, flake8, mypy y bandit con la configuración de `pyproject.toml` y `.flake8`. `medicion_s09.py` imprime las sentencias SQL y los tiempos de GET /parques con 10, 41 y 80 parques.
 
 `tests/test_caracterizacion_s09.py` fija el comportamiento de PATCH /parques, PATCH /usuarios y GET /parques antes de refactorizar; `tests/test_refactorizacion_s09.py` reproduce los defectos CR-03 y CR-04. El análisis y las refactorizaciones están en `../S09_A1/`.
 

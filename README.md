@@ -107,9 +107,8 @@ Los pasos se probaron completos en Linux. En macOS son los mismos; así levantam
 
 - Git
 - Docker Desktop (levanta PostgreSQL y la API)
-- [uv](https://docs.astral.sh/uv/) (`brew install uv`): instala Python 3.12 por su cuenta
 - Node.js 20 o superior (`brew install node`)
-- Solo para las pruebas del backend: el cliente `psql` (`brew install libpq && brew link --force libpq`)
+- Solo para correr las pruebas del backend: [uv](https://docs.astral.sh/uv/) (`brew install uv`, instala Python 3.12 por su cuenta) y el cliente `psql` (`brew install libpq && brew link --force libpq`)
 
 ### 1. Clonar
 
@@ -137,14 +136,23 @@ En `backend/.env` hay que cambiar, como mínimo:
 
 ```bash
 cd backend
-docker compose up -d --build                  # PostgreSQL 16 + API en http://localhost:8000
-curl http://localhost:8000/api/salud          # {"estado":"ok","baseDatos":"ok",...}
-
-uv sync                                       # dependencias de Python (crea backend/.venv)
-uv run --env-file .env python -m app.semilla  # catálogo sintético, generación 2027 y cuenta de Coordinación
-uv run --env-file .env python -m app.demo_s11 # generación 2026 con 8 parques, consultores, APPI y avance
+docker compose up -d --build
+curl http://localhost:8000/api/salud
+docker compose exec api python -m app.semilla
+docker compose exec api python -m app.demo_s11
 cd ..
 ```
+
+Qué hace cada paso:
+
+1. `docker compose up -d --build` levanta PostgreSQL 16 y la API en http://localhost:8000.
+2. `curl .../api/salud` debe responder `{"estado":"ok","baseDatos":"ok",...}`. Si dice "Couldn't connect", espera unos segundos y repítelo.
+3. `app.semilla`, dentro del contenedor de la API, carga el catálogo sintético, la generación 2027 y la cuenta de Coordinación.
+4. `app.demo_s11` carga la generación 2026 con 8 parques, consultores, APPI y avance.
+
+El aviso `StarletteDeprecationWarning` que imprimen los dos últimos es de una dependencia y no afecta.
+
+Los bloques de comandos de este README no llevan comentarios con `#` porque zsh, la terminal por omisión de macOS, no los ignora al pegarlos.
 
 El esquema se carga solo la primera vez que arranca el contenedor. Para empezar de cero: `docker compose down -v` y repetir el paso 3.
 
@@ -155,8 +163,10 @@ La documentación interactiva de la API queda en http://localhost:8000/api/docs.
 ```bash
 cd frontend
 npm install
-npm run dev                                   # http://localhost:5173
+npm run dev
 ```
+
+El frontend queda en http://localhost:5173.
 
 ### 5. Entrar
 
@@ -171,12 +181,24 @@ Los parques, desarrolladores y personas del escenario de demostración son inven
 
 ### Sin Docker para la API
 
-Si prefieres correr la API fuera del contenedor (por ejemplo, para depurar), deja solo la base en Docker:
+Si prefieres correr la API fuera del contenedor (por ejemplo, para depurar), deja solo la base en Docker. Requiere uv:
 
 ```bash
 cd backend
 docker compose up -d db
+uv sync
+uv run --env-file .env python -m app.semilla
+uv run --env-file .env python -m app.demo_s11
 uv run --env-file .env uvicorn app.main:app --reload --port 8000
+```
+
+### Si Docker falla al construir
+
+Si `docker compose up --build` termina con `input/output error`, el caché de Docker Desktop está dañado. Se limpia así y se repite el paso 3:
+
+```bash
+docker system prune -af --volumes
+docker builder prune -af
 ```
 
 ## Pruebas
@@ -196,18 +218,22 @@ Resultado esperado: `105 passed`. Los nombres llevan el criterio de aceptación 
 Otros comandos útiles:
 
 ```bash
-uv run pytest tests/test_trazabilidad_s11.py -v   # AC agregados en S11
-uv run pytest --cov=app --cov-report=term-missing # cobertura
-bash scripts/calidad.sh                           # pylint, flake8, mypy y bandit (S09)
+uv run pytest tests/test_trazabilidad_s11.py -v
+uv run pytest --cov=app --cov-report=term-missing
+bash scripts/calidad.sh
 ```
+
+El primero corre solo los AC agregados en S11, el segundo mide cobertura y el tercero corre pylint, flake8, mypy y bandit (S09).
 
 ### Frontend
 
 ```bash
 cd frontend
-npm run lint      # oxlint, sin advertencias
-npm run build     # build de producción en dist/
+npm run lint
+npm run build
 ```
+
+`npm run lint` corre oxlint y debe terminar sin advertencias; `npm run build` genera el build de producción en `dist/`.
 
 ### Punta a punta (Playwright)
 
@@ -216,9 +242,11 @@ Recorre en el navegador los flujos del video: login con error y sin error, table
 ```bash
 pip install playwright && playwright install chromium
 cd frontend
-set -a; . ../backend/.env; set +a                 # toma SEMILLA_CORREO, SEMILLA_CONTRASENA y DEMO_CONTRASENA
-python e2e/flujos_s11.py                          # termina con "OK"
+set -a; . ../backend/.env; set +a
+python e2e/flujos_s11.py
 ```
+
+La línea `set -a` carga `SEMILLA_CORREO`, `SEMILLA_CONTRASENA` y `DEMO_CONTRASENA` del `.env` del backend. La prueba termina imprimiendo `OK`.
 
 ## Variables de entorno
 
