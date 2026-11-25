@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     invitacion_vigencia_horas: int = 72
     url_spa: str = "http://localhost:5173"
 
+    # Orígenes del navegador que pueden llamar a la API (S11). URL_SPA siempre entra; CORS_ORIGENES agrega otros
+    # separados por coma (por ejemplo, el dominio del frontend desplegado).
+    cors_origenes: str = ""
+
+    @property
+    def origenes_permitidos(self) -> list[str]:
+        """URL_SPA más los orígenes de CORS_ORIGENES, sin duplicados ni diagonal final."""
+        extra = [o.strip().rstrip("/") for o in self.cors_origenes.split(",") if o.strip()]
+        return list(dict.fromkeys([self.url_spa.rstrip("/"), *extra]))
+
     zona_horaria: str = "America/Mexico_City"
 
     @property

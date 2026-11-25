@@ -3,9 +3,11 @@
 import logging
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 
+from app.config import get_settings
 from app.errores import registrar_handlers
 from app.permisos import autorizar, verificar_mapa
 from app.routers import (
@@ -43,6 +45,16 @@ app = FastAPI(
     redoc_url=None,
 )
 registrar_handlers(app)
+
+# El frontend (Vite en :5173) corre en otro origen que la API (:8000). Solo los orígenes de la configuración pueden
+# leer respuestas; el token viaja en el encabezado Authorization, no en cookies, así que no hace falta credentials.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().origenes_permitidos,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["Location"],
+)
 
 # Públicas o con su propia dependencia de sesión: /salud, /auth/login, /auth/register (security: [] en el
 # contrato) y /auth/me, /auth/logout (SesionAutenticada).

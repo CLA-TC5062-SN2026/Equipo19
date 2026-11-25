@@ -39,7 +39,23 @@ uv run python -m app.semilla --demo   # además, APPI de demostración e invitac
 
 Usa `SEMILLA_CORREO`, `SEMILLA_CONTRASENA` y `SEMILLA_APPI_CONTRASENA` del `.env`. Es idempotente.
 
+Para la demo de S11, después de la semilla:
+
+```bash
+uv run --env-file .env python -m app.demo_s11   # generación 2026: 8 parques, consultores, APPI, gerente, avance
+```
+
+Crea los datos con la API, como lo haría Coordinación o el consultor, salvo la calificación de criterios: RF-27 no
+tiene endpoint, así que el avance se escribe directo en `criterio_parque` y en su historial (el script lo explica en su
+encabezado). Las cuentas usan `DEMO_CONTRASENA`. Es idempotente.
+
 Documentación interactiva: http://localhost:8000/api/docs
+
+## CORS
+
+El frontend corre en otro origen (`http://localhost:5173`). `app/main.py` registra `CORSMiddleware` con `URL_SPA` más
+los orígenes de `CORS_ORIGENES` (separados por coma). Los errores 401/403/422 también llevan el encabezado, para que el
+navegador deje leer el mensaje (`tests/test_cors.py`).
 
 ## Pruebas
 
@@ -47,8 +63,12 @@ Necesitan un PostgreSQL 16 local con un usuario que pueda crear bases (por defec
 
 ```bash
 uv sync
-uv run pytest
+uv run pytest            # 105 pruebas
 ```
+
+Con la base del `docker compose` basta apuntar al usuario del contenedor, que puede crear bases:
+`SGPIS_TEST_ADMIN_URL="postgresql://sgpis:<POSTGRES_PASSWORD>@localhost:5432/postgres" uv run pytest`.
+`tests/test_trazabilidad_s11.py` agrega las pruebas de AC que el código ya cumplía sin prueba con nombre (S11).
 
 ## Calidad de código (S09_A1)
 

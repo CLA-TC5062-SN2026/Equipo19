@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Tokens de diseño de SGPIS.
+   Los colores de texto sobre fondo claro cumplen contraste >= 4.5:1 (WCAG 2.1, 1.4.3):
+   - primario (azul 700) sobre blanco: 6.7:1
+   - texto secundario (gris 600) sobre blanco: 7.6:1
+   - error (rojo 700) sobre blanco: 6.5:1
+   Los bordes de controles usan gris 500 (4.8:1) para cumplir el 3:1 de WCAG 1.4.11. */
+@theme {
+  --color-primario-600: #2563eb;
+  --color-primario-700: #1d4ed8;
+  --color-primario-800: #1e40af;
+  --color-superficie: #ffffff;
+  --color-fondo: #f8fafc;
+}
+
+body {
+  background-color: var(--color-fondo);
+}
